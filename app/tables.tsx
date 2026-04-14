@@ -66,9 +66,56 @@ export default function TablesScreen() {
     );
   }
 
+  const ListHeader = () => (
+    <>
+      {/* Stats Row */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        alwaysBounceHorizontal={false}
+        contentContainerStyle={styles.statsRow}
+      >
+        {(Object.entries(stats) as [TableStatus, number][]).map(([status, count]) => {
+          const cfg = STATUS_CONFIG[status];
+          return (
+            <View
+              key={status}
+              style={[styles.statChip, { backgroundColor: cfg.bg, borderColor: cfg.color + '40' }]}
+            >
+              <View style={[styles.statDot, { backgroundColor: cfg.dot }]} />
+              <Text style={[styles.statLabel, { color: cfg.color }]}>{cfg.label}</Text>
+              <Text style={[styles.statCount, { color: cfg.color }]}>{count}</Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Section Filter */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        alwaysBounceHorizontal={false}
+        contentContainerStyle={styles.sectionRow}
+      >
+        {sections.map(s => (
+          <TouchableOpacity
+            key={s}
+            style={[styles.sectionBtn, activeSection === s && styles.sectionBtnActive]}
+            onPress={() => setActiveSection(s)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.sectionBtnText, activeSection === s && styles.sectionBtnTextActive]}>
+              {s}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </>
+  );
+
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Fixed Header — never moves */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Floor View</Text>
@@ -82,48 +129,13 @@ export default function TablesScreen() {
         </View>
       </View>
 
-      {/* Stats Row */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.statsRow}
-      >
-        {(Object.entries(stats) as [TableStatus, number][]).map(([status, count]) => {
-          const cfg = STATUS_CONFIG[status];
-          return (
-            <View key={status} style={[styles.statChip, { backgroundColor: cfg.bg, borderColor: cfg.color + '40' }]}>
-              <View style={[styles.statDot, { backgroundColor: cfg.dot }]} />
-              <Text style={[styles.statLabel, { color: cfg.color }]}>{cfg.label}</Text>
-              <Text style={[styles.statCount, { color: cfg.color }]}>{count}</Text>
-            </View>
-          );
-        })}
-      </ScrollView>
-
-      {/* Section Filter */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.sectionRow}
-      >
-        {sections.map(s => (
-          <TouchableOpacity
-            key={s}
-            style={[styles.sectionBtn, activeSection === s && styles.sectionBtnActive]}
-            onPress={() => setActiveSection(s)}
-          >
-            <Text style={[styles.sectionBtnText, activeSection === s && styles.sectionBtnTextActive]}>
-              {s}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Table Grid */}
+      {/* FlatList owns the scroll — filter rows are part of it via ListHeaderComponent */}
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
         numColumns={3}
+        key={activeSection}
+        ListHeaderComponent={ListHeader}
         contentContainerStyle={styles.grid}
         refreshControl={
           <RefreshControl
@@ -227,8 +239,11 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     letterSpacing: 1,
   },
+
+  // ── Stats Row ──────────────────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     gap: Spacing.sm,
@@ -236,9 +251,10 @@ const styles = StyleSheet.create({
   statChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: Radius.full,
     borderWidth: 1,
   },
@@ -255,15 +271,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
+
+  // ── Section Filter Row ─────────────────────────────────────────────────────
   sectionRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.sm,
     gap: Spacing.sm,
   },
   sectionBtn: {
+    alignSelf: 'flex-start',
     paddingHorizontal: 16,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: Radius.full,
     backgroundColor: Colors.surfaceElevated,
     borderWidth: 1,
@@ -281,8 +301,10 @@ const styles = StyleSheet.create({
   sectionBtnTextActive: {
     color: Colors.primary,
   },
+
+  // ── Table Grid ─────────────────────────────────────────────────────────────
   grid: {
-    padding: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
     paddingBottom: 32,
   },
   tableCard: {
