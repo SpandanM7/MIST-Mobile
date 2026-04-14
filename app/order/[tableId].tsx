@@ -15,6 +15,7 @@ import {
   BackHandler,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import {
   fetchMenuCategories,
@@ -29,9 +30,8 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Each entry in the cart: one "slot" = one line item (same dish can appear multiple times with different notes)
 type CartEntry = {
-  slotId: string;       // unique per slot
+  slotId: string;
   menuItemId: string;
   menuItemName: string;
   price: number;
@@ -42,15 +42,13 @@ type CartEntry = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const uid = () => Math.random().toString(36).slice(2, 9);
-
-const calcTotal = (cart: CartEntry[]) =>
-  cart.reduce((sum, e) => sum + e.price * e.quantity, 0);
-
+const calcTotal = (cart: CartEntry[]) => cart.reduce((sum, e) => sum + e.price * e.quantity, 0);
 const formatPrice = (p: number) => `₹${p.toLocaleString('en-IN')}`;
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function OrderScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tableId: string; tableNumber: string; status: string }>();
   const { tableId, tableNumber, status } = params;
   const isEdit = status === 'order_taken';
@@ -64,14 +62,13 @@ export default function OrderScreen() {
   const [saving, setSaving] = useState(false);
   const [existingOrderId, setExistingOrderId] = useState<string | null>(null);
 
-  // UI states
   const [showCart, setShowCart] = useState(false);
   const [noteModal, setNoteModal] = useState<{ visible: boolean; slotId: string; note: string }>({
     visible: false, slotId: '', note: '',
   });
   const [exitConfirm, setExitConfirm] = useState(false);
 
-  // ─── Load data ──────────────────────────────────────────────────────────────
+  // ─── Load data ───────────────────────────────────────────────────────────────
 
   const loadAll = useCallback(async () => {
     try {
@@ -85,7 +82,6 @@ export default function OrderScreen() {
         if (existing) {
           setExistingOrderId(existing.id);
           setSpecialInstructions(existing.specialInstructions);
-          // Convert OrderItem[] → CartEntry[] (each item = one slot)
           setCart(existing.items.map(item => ({
             slotId: uid(),
             menuItemId: item.menuItemId,
@@ -103,7 +99,6 @@ export default function OrderScreen() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Android back button
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (showCart) { setShowCart(false); return true; }
@@ -113,7 +108,7 @@ export default function OrderScreen() {
     return () => sub.remove();
   }, [cart.length, showCart]);
 
-  // ─── Cart operations ─────────────────────────────────────────────────────────
+  // ─── Cart operations ──────────────────────────────────────────────────────────
 
   const addToCart = (item: MenuItem) => {
     setCart(prev => [...prev, {
@@ -126,9 +121,7 @@ export default function OrderScreen() {
     }]);
   };
 
-  const removeSlot = (slotId: string) => {
-    setCart(prev => prev.filter(e => e.slotId !== slotId));
-  };
+  const removeSlot = (slotId: string) => setCart(prev => prev.filter(e => e.slotId !== slotId));
 
   const changeQty = (slotId: string, delta: number) => {
     setCart(prev => prev.map(e => {
@@ -146,11 +139,10 @@ export default function OrderScreen() {
     setNoteModal({ visible: false, slotId: '', note: '' });
   };
 
-  // How many slots of this item are in cart
   const cartCountForItem = (itemId: string) =>
     cart.filter(e => e.menuItemId === itemId).reduce((s, e) => s + e.quantity, 0);
 
-  // ─── Submit ──────────────────────────────────────────────────────────────────
+  // ─── Submit ───────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
     if (cart.length === 0) {
@@ -186,17 +178,17 @@ export default function OrderScreen() {
   };
 
   const handleBack = () => {
-    if (cart.length > 0) {
-      setExitConfirm(true);
-    } else {
-      router.back();
-    }
+    if (cart.length > 0) setExitConfirm(true);
+    else router.back();
   };
 
-  // ─── Render helpers ───────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────────
 
   const filteredItems = menuItems.filter(i => i.categoryId === activeCategory);
   const total = calcTotal(cart);
+
+  // Bottom bar height so FlatList doesn't scroll behind it
+  const bottomBarHeight = 72 + insets.bottom;
 
   if (loading) {
     return (
@@ -209,8 +201,9 @@ export default function OrderScreen() {
 
   return (
     <View style={styles.container}>
+
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -252,7 +245,8 @@ export default function OrderScreen() {
       <FlatList
         data={filteredItems}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.menuList}
+        // Pad bottom so last item isn't hidden behind the bottom bar
+        contentContainerStyle={[styles.menuList, { paddingBottom: bottomBarHeight + 16 }]}
         renderItem={({ item }) => {
           const count = cartCountForItem(item.id);
           return (
@@ -295,9 +289,9 @@ export default function OrderScreen() {
         }}
       />
 
-      {/* ── Bottom Bar ── */}
+      {/* ── Bottom Bar — sits above Android nav bar ── */}
       {cart.length > 0 && (
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + Spacing.md }]}>
           <View style={styles.bottomBarLeft}>
             <Text style={styles.bottomBarCount}>{cart.reduce((s, e) => s + e.quantity, 0)} items</Text>
             <Text style={styles.bottomBarTotal}>{formatPrice(total)}</Text>
@@ -317,9 +311,9 @@ export default function OrderScreen() {
       )}
 
       {/* ── Cart Modal ── */}
-      <Modal visible={showCart} animationType="slide" transparent>
+      <Modal visible={showCart} animationType="slide" transparent statusBarTranslucent>
         <View style={styles.modalOverlay}>
-          <View style={styles.cartModal}>
+          <View style={[styles.cartModal, { paddingBottom: insets.bottom }]}>
             <View style={styles.cartModalHandle} />
             <View style={styles.cartModalHeader}>
               <Text style={styles.cartModalTitle}>Order Summary</Text>
@@ -366,7 +360,6 @@ export default function OrderScreen() {
                 ))
               )}
 
-              {/* Special instructions */}
               <View style={styles.specialBox}>
                 <Text style={styles.specialLabel}>Special Instructions</Text>
                 <TextInput
@@ -380,7 +373,6 @@ export default function OrderScreen() {
                 />
               </View>
 
-              {/* Total */}
               {cart.length > 0 && (
                 <View style={styles.cartTotal}>
                   <Text style={styles.cartTotalLabel}>Total</Text>
@@ -391,7 +383,7 @@ export default function OrderScreen() {
 
             {cart.length > 0 && (
               <TouchableOpacity
-                style={[styles.saveBtn, { margin: Spacing.md }, saving && styles.saveBtnDisabled]}
+                style={[styles.saveBtn, styles.cartSaveBtn, saving && styles.saveBtnDisabled]}
                 onPress={() => { setShowCart(false); handleSave(); }}
                 disabled={saving}
               >
@@ -403,7 +395,7 @@ export default function OrderScreen() {
       </Modal>
 
       {/* ── Note Modal ── */}
-      <Modal visible={noteModal.visible} animationType="fade" transparent>
+      <Modal visible={noteModal.visible} animationType="fade" transparent statusBarTranslucent>
         <KeyboardAvoidingView style={styles.noteOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.noteModal}>
             <Text style={styles.noteModalTitle}>Item Note</Text>
@@ -434,7 +426,7 @@ export default function OrderScreen() {
       </Modal>
 
       {/* ── Exit Confirmation ── */}
-      <Modal visible={exitConfirm} animationType="fade" transparent>
+      <Modal visible={exitConfirm} animationType="fade" transparent statusBarTranslucent>
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmModal}>
             <Text style={styles.confirmTitle}>Discard Order?</Text>
@@ -469,11 +461,10 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: Colors.textSecondary, fontSize: 14 },
 
-  // Header
+  // Header — paddingTop handled dynamically via insets
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 52,
     paddingBottom: Spacing.md,
     paddingHorizontal: Spacing.md,
     backgroundColor: Colors.surface,
@@ -499,7 +490,7 @@ const styles = StyleSheet.create({
   catLabelActive: { color: Colors.primary },
 
   // Menu
-  menuList: { padding: Spacing.md, gap: 10, paddingBottom: 120 },
+  menuList: { padding: Spacing.md, gap: 10 },
   menuCard: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.surfaceBorder, alignItems: 'center' },
   menuCardDisabled: { opacity: 0.4 },
   menuCardLeft: { flex: 1 },
@@ -525,7 +516,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopWidth: 1, borderTopColor: Colors.surfaceBorder,
     flexDirection: 'row', alignItems: 'center',
-    padding: Spacing.md, paddingBottom: Platform.OS === 'ios' ? 28 : Spacing.md,
+    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
     gap: Spacing.md,
   },
   bottomBarLeft: { flex: 1 },
@@ -534,6 +526,7 @@ const styles = StyleSheet.create({
   saveBtn: { backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: 20, paddingVertical: 14, minWidth: 160, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
+  cartSaveBtn: { marginHorizontal: Spacing.md, marginVertical: Spacing.md },
 
   // Cart modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
