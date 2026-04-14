@@ -52,7 +52,7 @@ export default function LoginScreen() {
           <View style={styles.logoIcon}>
             <Text style={styles.logoEmoji}>🍽️</Text>
           </View>
-          <Text style={styles.brandName}>TableServe</Text>
+          <Text style={styles.brandName}>MIST</Text>
           <Text style={styles.brandTagline}>Waiter Management System</Text>
         </View>
 
@@ -106,7 +106,7 @@ export default function LoginScreen() {
           <Text style={styles.demoHint}>Demo: any username & password works</Text>
         </View>
 
-        <Text style={styles.footer}>TableServe v1.0  •  Restaurant Edition</Text>
+        <Text style={styles.footer}>MIST v1.0  •  Restaurant Edition</Text>
       </View>
     </KeyboardAvoidingView>
   );
