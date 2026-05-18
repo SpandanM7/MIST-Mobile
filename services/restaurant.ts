@@ -2,22 +2,73 @@ import axios from 'axios';
 
 // ─── Axios Instance ───────────────────────────────────────────────────────────
 const api = axios.create({
-  baseURL: 'https://your-backend-url.com/api', // Replace when backend is ready
+  baseURL: 'https://mist-backend-0a05.onrender.com/api', // Replace when backend is ready
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type TableStatus = 'empty' | 'occupied' | 'order_taken' | 'delivered';
+export type TableStatus = 'empty' | 'occupied' | 'bill_requested';
 
 export type Table = {
   id: string;
-  number: number;
+  number: string;       // e.g. "T1" — string to match API
   capacity: number;
   status: TableStatus;
-  section: string;
+  section: string;      // section name
+  floor: string;        // floor name
+  floorId: string;
+  sectionId: string;
+  occupiedAt: string | null;
 };
+
+// Raw shapes returned by /floors — used internally when parsing
+export type ApiTable = {
+  id: string;
+  tableNumber: string;
+  capacity: number;
+  status: TableStatus;
+  sectionId: string;
+  occupiedAt: string | null;
+};
+
+export type ApiSection = {
+  id: string;
+  name: string;
+  floorId: string;
+  tables: ApiTable[];
+};
+
+export type ApiFloor = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  sections: ApiSection[];
+};
+
+export type Floor = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  sections: Section[];
+};
+
+export type Section = {
+  id: string;
+  name: string;
+  floorId: string;
+  tables: Table[];
+};
+
+// Standard API response wrapper
+type ApiResponse<T> = {
+  success: boolean;
+  message: string | null;
+  data: T;
+};
+
+
 
 export type MenuCategory = {
   id: string;
@@ -72,22 +123,53 @@ export type LoginResponse = {
   };
 };
 
+
+
+
+function parseFloors(apiFloors: ApiFloor[]): { floors: Floor[]; tables: Table[] } {
+  const allTables: Table[] = [];
+
+  const floors: Floor[] = apiFloors
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map(apiFloor => {
+      const sections: Section[] = apiFloor.sections.map(apiSection => {
+        const tables: Table[] = apiSection.tables.map(apiTable => ({
+          id: apiTable.id,
+          number: apiTable.tableNumber,
+          capacity: apiTable.capacity,
+          status: apiTable.status,
+          section: apiSection.name,
+          floor: apiFloor.name,
+          floorId: apiFloor.id,
+          sectionId: apiSection.id,
+          occupiedAt: apiTable.occupiedAt,
+        }));
+        allTables.push(...tables);
+        return { id: apiSection.id, name: apiSection.name, floorId: apiFloor.id, tables };
+      });
+      return { id: apiFloor.id, name: apiFloor.name, sortOrder: apiFloor.sortOrder, sections };
+    });
+
+  return { floors, tables: allTables };
+}
+
+
 // ─── Demo Data ────────────────────────────────────────────────────────────────
 
-const DEMO_TABLES: Table[] = [
-  { id: 't1',  number: 1,  capacity: 2, status: 'empty',       section: 'Indoor' },
-  { id: 't2',  number: 2,  capacity: 4, status: 'order_taken', section: 'Indoor' },
-  { id: 't3',  number: 3,  capacity: 4, status: 'occupied',    section: 'Indoor' },
-  { id: 't4',  number: 4,  capacity: 6, status: 'empty',       section: 'Indoor' },
-  { id: 't5',  number: 5,  capacity: 2, status: 'delivered',   section: 'Indoor' },
-  { id: 't6',  number: 6,  capacity: 4, status: 'order_taken', section: 'Indoor' },
-  { id: 't7',  number: 7,  capacity: 8, status: 'empty',       section: 'Outdoor' },
-  { id: 't8',  number: 8,  capacity: 4, status: 'occupied',    section: 'Outdoor' },
-  { id: 't9',  number: 9,  capacity: 2, status: 'empty',       section: 'Outdoor' },
-  { id: 't10', number: 10, capacity: 6, status: 'order_taken', section: 'Outdoor' },
-  { id: 't11', number: 11, capacity: 4, status: 'empty',       section: 'Bar' },
-  { id: 't12', number: 12, capacity: 2, status: 'delivered',   section: 'Bar' },
-];
+// const DEMO_TABLES: Table[] = [
+//   { id: 't1',  number: 1,  capacity: 2, status: 'empty',       section: 'Indoor' },
+//   { id: 't2',  number: 2,  capacity: 4, status: 'order_taken', section: 'Indoor' },
+//   { id: 't3',  number: 3,  capacity: 4, status: 'occupied',    section: 'Indoor' },
+//   { id: 't4',  number: 4,  capacity: 6, status: 'empty',       section: 'Indoor' },
+//   { id: 't5',  number: 5,  capacity: 2, status: 'delivered',   section: 'Indoor' },
+//   { id: 't6',  number: 6,  capacity: 4, status: 'order_taken', section: 'Indoor' },
+//   { id: 't7',  number: 7,  capacity: 8, status: 'empty',       section: 'Outdoor' },
+//   { id: 't8',  number: 8,  capacity: 4, status: 'occupied',    section: 'Outdoor' },
+//   { id: 't9',  number: 9,  capacity: 2, status: 'empty',       section: 'Outdoor' },
+//   { id: 't10', number: 10, capacity: 6, status: 'order_taken', section: 'Outdoor' },
+//   { id: 't11', number: 11, capacity: 4, status: 'empty',       section: 'Bar' },
+//   { id: 't12', number: 12, capacity: 2, status: 'delivered',   section: 'Bar' },
+// ];
 
 const DEMO_CATEGORIES: MenuCategory[] = [
   { id: 'c1', name: 'Starters',  icon: '🥗' },
@@ -139,24 +221,24 @@ const DEMO_MENU_ITEMS: MenuItem[] = [
   { id: 'm27', categoryId: 'c6', name: 'Cheesecake',            description: 'New York style cheesecake with seasonal berry compote',     price: 349,  isAvailable: true,  isVeg: true,  tags: [] },
 ];
 
-const DEMO_EXISTING_ORDER: Order = {
-  id: 'ord_demo_001',
-  tableId: 't2',
-  tableNumber: 2,
-  waiterId: 'w1',
-  waiterName: 'Demo Waiter',
-  items: [
-    { menuItemId: 'm3',  menuItemName: 'Chicken Wings',       price: 449,  quantity: 2, note: 'Extra crispy, extra sauce on side' },
-    { menuItemId: 'm11', menuItemName: 'Ribeye Steak 300g',   price: 1499, quantity: 1, note: 'Medium rare, pepper sauce' },
-    { menuItemId: 'm11', menuItemName: 'Ribeye Steak 300g',   price: 1499, quantity: 1, note: 'Well done, mushroom sauce' },
-    { menuItemId: 'm23', menuItemName: 'Virgin Mojito',       price: 199,  quantity: 3, note: '' },
-  ],
-  status: 'pending',
-  specialInstructions: 'Table has a birthday guest, surprise dessert if possible',
-  createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-  updatedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-  totalAmount: 0,
-};
+// const DEMO_EXISTING_ORDER: Order = {
+//   id: 'ord_demo_001',
+//   tableId: 't2',
+//   tableNumber: 2,
+//   waiterId: 'w1',
+//   waiterName: 'Demo Waiter',
+//   items: [
+//     { menuItemId: 'm3',  menuItemName: 'Chicken Wings',       price: 449,  quantity: 2, note: 'Extra crispy, extra sauce on side' },
+//     { menuItemId: 'm11', menuItemName: 'Ribeye Steak 300g',   price: 1499, quantity: 1, note: 'Medium rare, pepper sauce' },
+//     { menuItemId: 'm11', menuItemName: 'Ribeye Steak 300g',   price: 1499, quantity: 1, note: 'Well done, mushroom sauce' },
+//     { menuItemId: 'm23', menuItemName: 'Virgin Mojito',       price: 199,  quantity: 3, note: '' },
+//   ],
+//   status: 'pending',
+//   specialInstructions: 'Table has a birthday guest, surprise dessert if possible',
+//   createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+//   updatedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+//   totalAmount: 0,
+// };
 
 // ─── API Functions ────────────────────────────────────────────────────────────
 
@@ -177,12 +259,26 @@ export const loginWaiter = async (payload: LoginPayload): Promise<LoginResponse>
 };
 
 // TABLES
-export const fetchTables = async (): Promise<Table[]> => {
-  // TODO: Replace with real API call when backend is ready
-  // return api.get('/tables').then(r => r.data);
+// export const fetchTables = async (): Promise<Table[]> => {
+//   // TODO: Replace with real API call when backend is ready
+//   // return api.get('/tables').then(r => r.data);
 
-  await new Promise(r => setTimeout(r, 600));
-  return DEMO_TABLES;
+//   await new Promise(r => setTimeout(r, 600));
+//   return DEMO_TABLES;
+// };
+
+// Returns the full nested floor → section → table structure
+export const fetchFloors = async (): Promise<Floor[]> => {
+  const response = await api.get<ApiResponse<ApiFloor[]>>('/floors');
+  const { floors } = parseFloors(response.data.data);
+  return floors;
+};
+
+// Convenience flat list — hits the same endpoint, just flattens it
+export const fetchTables = async (): Promise<Table[]> => {
+  const response = await api.get<ApiResponse<ApiFloor[]>>('/floors');
+  const { tables } = parseFloors(response.data.data);
+  return tables;
 };
 
 // MENU
@@ -205,14 +301,12 @@ export const fetchMenuItems = async (): Promise<MenuItem[]> => {
 // ORDERS
 export const fetchOrderByTable = async (tableId: string): Promise<Order | null> => {
   // TODO: Replace with real API call when backend is ready
-  // return api.get(`/orders/table/${tableId}`).then(r => r.data).catch(() => null);
+  // return api.get<ApiResponse<Order>>(`/orders/table/${tableId}`).then(r => r.data.data).catch(() => null);
 
   await new Promise(r => setTimeout(r, 500));
-  if (tableId === 't2' || tableId === 't6' || tableId === 't10') {
-    return { ...DEMO_EXISTING_ORDER, tableId, tableNumber: parseInt(tableId.replace('t', '')) };
-  }
   return null;
 };
+
 
 export const submitOrder = async (
   tableId: string,

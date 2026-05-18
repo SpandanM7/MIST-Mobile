@@ -1,35 +1,35 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  Modal,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  BackHandler,
-  Dimensions,
-  PixelRatio,
-  StatusBar,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Spacing, Radius } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import {
   fetchMenuCategories,
   fetchMenuItems,
   fetchOrderByTable,
-  submitOrder,
-  updateOrder,
   MenuCategory,
   MenuItem,
   OrderItem,
+  submitOrder,
+  updateOrder,
 } from '@/services/restaurant';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Dimensions,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  PixelRatio,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CustomAlert, { AlertButton } from '@/components/Customalert';
 
 // ─── Responsive Scaling ───────────────────────────────────────────────────────
 // Scales font sizes and dimensions relative to a 390px wide baseline (iPhone 14)
@@ -55,6 +55,24 @@ const clampSp = (size: number, min: number, max: number) =>
   Math.min(Math.max(sp(size), min), max);
 const clampDp = (size: number, min: number, max: number) =>
   Math.min(Math.max(dp(size), min), max);
+
+
+const [alert, setAlert] = useState<{
+  visible: boolean;
+  title: string;
+  message?: string;
+  type?: 'info' | 'success' | 'error' | 'warning';
+  emoji?: string;
+  buttons?: AlertButton[];
+}>({ visible: false, title: '' });
+
+const showAlert = (
+  title: string,
+  message?: string,
+  type: 'info' | 'success' | 'error' | 'warning' = 'info',
+  buttons?: AlertButton[],
+  emoji?: string,
+) => setAlert({ visible: true, title, message, type, buttons, emoji });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -234,7 +252,7 @@ export default function OrderScreen() {
 
   const handleSave = async () => {
     if (cart.length === 0) {
-      Alert.alert('Empty Order', 'Please add at least one item to the order.');
+      showAlert('Empty Order', 'Please add at least one item to the order.', 'warning');
       return;
     }
     setSaving(true);
@@ -260,13 +278,14 @@ export default function OrderScreen() {
         );
       }
 
-      Alert.alert(
+      showAlert(
         isEdit ? 'Order Updated!' : 'Order Placed!',
         `Table ${tableNumber} order has been ${isEdit ? 'updated' : 'submitted'} successfully.`,
+        'success',
         [{ text: 'OK', onPress: () => router.replace('/tables' as any) }]
-      );
+    );
     } catch {
-      Alert.alert('Error', 'Failed to save the order. Please try again.');
+      showAlert('Error', 'Failed to save the order. Please try again.', 'error');
     } finally {
       setSaving(false);
     }
@@ -372,32 +391,34 @@ export default function OrderScreen() {
       )}
 
       {/* ── Category Tabs ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.catRow}
-        alwaysBounceHorizontal={false}
-        style={{ flexShrink: 0 }} 
-      >
-        {categories.map(cat => (
-          <TouchableOpacity
-            key={cat.id}
-            style={[styles.catBtn, activeCategory === cat.id && styles.catBtnActive]}
-            onPress={() => setActiveCategory(cat.id)}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.catIcon}>{cat.icon}</Text>
-            <Text
-              style={[
-                styles.catLabel,
-                activeCategory === cat.id && styles.catLabelActive,
-              ]}
+      <View style={styles.catRowWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.catRow}
+          alwaysBounceHorizontal={false}
+          style={{ flexShrink: 0 }} 
+        >
+          {categories.map(cat => (
+            <TouchableOpacity
+              key={cat.id}
+              style={[styles.catBtn, activeCategory === cat.id && styles.catBtnActive]}
+              onPress={() => setActiveCategory(cat.id)}
+              activeOpacity={0.75}
             >
-              {cat.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              <Text style={styles.catIcon}>{cat.icon}</Text>
+              <Text
+                style={[
+                  styles.catLabel,
+                  activeCategory === cat.id && styles.catLabelActive,
+                ]}
+              >
+                {cat.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {/* ── Menu Items ── */}
       <FlatList
@@ -984,7 +1005,13 @@ const styles = StyleSheet.create({
   catLabelActive: {
     color: Colors.primary,
   },
-
+  catRowWrapper: {
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceBorder,
+    height: clampDp(74, 68, 84),
+    justifyContent: 'center',
+  },
   // ── Menu List ──────────────────────────────────────────────────────────────
   menuList: {
     padding: clampDp(12, 8, 20),

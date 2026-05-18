@@ -8,11 +8,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { loginWaiter } from '@/services/restaurant';
+import CustomAlert, { AlertButton } from '@/components/Customalert';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
@@ -20,9 +20,26 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message?: string;
+    type?: 'info' | 'success' | 'error' | 'warning';
+    emoji?: string;
+    buttons?: AlertButton[];
+  }>({ visible: false, title: '' });
+
+  const showAlert = (
+    title: string,
+    message?: string,
+    type: 'info' | 'success' | 'error' | 'warning' = 'info',
+    buttons?: AlertButton[],
+    emoji?: string,
+  ) => setAlert({ visible: true, title, message, type, buttons, emoji });
+
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      Alert.alert('Missing Fields', 'Please enter both username and password.');
+      showAlert('Missing Fields', 'Please enter both username and password.', 'warning');
       return;
     }
     setLoading(true);
@@ -31,7 +48,7 @@ export default function LoginScreen() {
       // TODO: Store token in SecureStore when backend ready
       router.replace('/tables' as any);
     } catch {
-      Alert.alert('Login Failed', 'Invalid username or password.');
+      showAlert('Login Failed', 'Invalid username or password.', 'error');
     } finally {
       setLoading(false);
     }
@@ -108,6 +125,12 @@ export default function LoginScreen() {
 
         <Text style={styles.footer}>MIST v1.0  •  Restaurant Edition</Text>
       </View>
+
+      {/* Custom Alert */}
+      <CustomAlert
+        {...alert}
+        onDismiss={() => setAlert(prev => ({ ...prev, visible: false }))}
+      />
     </KeyboardAvoidingView>
   );
 }
