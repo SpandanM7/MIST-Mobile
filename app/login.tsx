@@ -15,7 +15,7 @@ import { loginWaiter } from '@/services/restaurant';
 import CustomAlert, { AlertButton } from '@/components/Customalert';
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -38,17 +38,16 @@ export default function LoginScreen() {
   ) => setAlert({ visible: true, title, message, type, buttons, emoji });
 
   const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) {
-      showAlert('Missing Fields', 'Please enter both username and password.', 'warning');
+    if (!email.trim() || !password.trim()) {
+      showAlert('Missing Fields', 'Please enter both email and password.', 'warning');
       return;
     }
     setLoading(true);
     try {
-      await loginWaiter({ username: username.trim(), password });
-      // TODO: Store token in SecureStore when backend ready
+      await loginWaiter({ email: email.trim(), password });
       router.replace('/tables' as any);
-    } catch {
-      showAlert('Login Failed', 'Invalid username or password.', 'error');
+    } catch (e: any) {
+      showAlert('Login Failed', e?.message ?? 'Invalid email or password.', 'error');
     } finally {
       setLoading(false);
     }
@@ -76,18 +75,19 @@ export default function LoginScreen() {
         {/* Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Welcome back</Text>
-          <Text style={styles.cardSubtitle}>Sign in to your waiter account</Text>
+          <Text style={styles.cardSubtitle}>Sign in to your account</Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Username</Text>
+            <Text style={styles.label}>Email</Text>
             <TextInput
               style={[styles.input, focusedField === 'user' && styles.inputFocused]}
-              placeholder="Enter your username"
+              placeholder="Enter your email"
               placeholderTextColor={Colors.textMuted}
-              value={username}
-              onChangeText={setUsername}
+              value={email}
+              onChangeText={setEmail}
               autoCapitalize="none"
               autoCorrect={false}
+              keyboardType="email-address"
               onFocus={() => setFocusedField('user')}
               onBlur={() => setFocusedField(null)}
             />
@@ -119,14 +119,11 @@ export default function LoginScreen() {
               <Text style={styles.loginBtnText}>Sign In →</Text>
             )}
           </TouchableOpacity>
-
-          <Text style={styles.demoHint}>Demo: any username & password works</Text>
         </View>
 
         <Text style={styles.footer}>MIST v1.0  •  Restaurant Edition</Text>
       </View>
 
-      {/* Custom Alert */}
       <CustomAlert
         {...alert}
         onDismiss={() => setAlert(prev => ({ ...prev, visible: false }))}
@@ -251,12 +248,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  demoHint: {
-    textAlign: 'center',
-    marginTop: Spacing.sm,
-    fontSize: 11,
-    color: Colors.textMuted,
   },
   footer: {
     textAlign: 'center',
