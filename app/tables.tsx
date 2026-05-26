@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/constants/theme';
-import { fetchFloors, Floor, Table, TableStatus } from '@/services/restaurant';
+import { fetchFloors, clearToken, Floor, Table, TableStatus } from '@/services/restaurant';
 
 // ─── Status config — covers all 3 backend statuses ───────────────────────────
 
@@ -22,7 +22,6 @@ const STATUS_CONFIG: Record<TableStatus, { label: string; color: string; bg: str
 };
 
 // ─── Filter state shape ───────────────────────────────────────────────────────
-// "All" across all floors, or a specific floorId + optional sectionId
 
 type ActiveFilter =
   | { type: 'all' }
@@ -35,7 +34,6 @@ export default function TablesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Two-level filter: top row = floors (+ All), bottom row = sections within selected floor
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>({ type: 'all' });
 
   // ─── Load ─────────────────────────────────────────────────────────────────
@@ -55,28 +53,30 @@ export default function TablesScreen() {
 
   useEffect(() => { loadFloors(); }, [loadFloors]);
 
+  // ─── Logout ───────────────────────────────────────────────────────────────
+
+  const handleLogout = async () => {
+    await clearToken();
+    router.replace('/login' as any);
+  };
+
   // ─── Derived data ─────────────────────────────────────────────────────────
 
-  // Flat list of all tables across all floors
   const allTables: Table[] = floors.flatMap(f => f.sections.flatMap(s => s.tables));
 
-  // Sections belonging to the currently selected floor (for second filter row)
   const activeSections =
     activeFilter.type !== 'all'
       ? floors.find(f => f.id === activeFilter.floorId)?.sections ?? []
       : [];
 
-  // Filtered tables based on active filter
   const filtered: Table[] = (() => {
     if (activeFilter.type === 'all') return allTables;
     if (activeFilter.type === 'floor') {
       return allTables.filter(t => t.floorId === activeFilter.floorId);
     }
-    // type === 'section'
     return allTables.filter(t => t.sectionId === activeFilter.sectionId);
   })();
 
-  // Stats always computed from ALL tables (not filtered) so counts don't change on filter
   const stats: Record<TableStatus, number> = {
     empty:          allTables.filter(t => t.status === 'empty').length,
     occupied:       allTables.filter(t => t.status === 'occupied').length,
@@ -86,7 +86,6 @@ export default function TablesScreen() {
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleFloorPress = (floorId: string) => {
-    // If already on this floor with no section, toggle back to All
     if (activeFilter.type === 'floor' && activeFilter.floorId === floorId) {
       setActiveFilter({ type: 'all' });
     } else {
@@ -95,7 +94,6 @@ export default function TablesScreen() {
   };
 
   const handleSectionPress = (floorId: string, sectionId: string) => {
-    // If already on this section, collapse back to floor level
     if (activeFilter.type === 'section' && activeFilter.sectionId === sectionId) {
       setActiveFilter({ type: 'floor', floorId });
     } else {
@@ -129,14 +127,12 @@ export default function TablesScreen() {
 
   const ListHeader = () => (
     <>
-      {/* Error banner */}
       {error && (
         <View style={styles.errorBanner}>
           <Text style={styles.errorBannerText}>⚠️  {error}</Text>
         </View>
       )}
 
-      {/* Stats row — global counts across all tables */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -158,33 +154,24 @@ export default function TablesScreen() {
         })}
       </ScrollView>
 
-      {/* Floor filter row */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         alwaysBounceHorizontal={false}
         contentContainerStyle={styles.filterRow}
       >
-        {/* "All" pill */}
         <TouchableOpacity
-          style={[
-            styles.filterBtn,
-            activeFilter.type === 'all' && styles.filterBtnActive,
-          ]}
+          style={[styles.filterBtn, activeFilter.type === 'all' && styles.filterBtnActive]}
           onPress={() => setActiveFilter({ type: 'all' })}
           activeOpacity={0.75}
         >
-          <Text style={[
-            styles.filterBtnText,
-            activeFilter.type === 'all' && styles.filterBtnTextActive,
-          ]}>
+          <Text style={[styles.filterBtnText, activeFilter.type === 'all' && styles.filterBtnTextActive]}>
             All
           </Text>
         </TouchableOpacity>
 
         {floors.map(floor => {
-          const isActive =
-            activeFilter.type !== 'all' && activeFilter.floorId === floor.id;
+          const isActive = activeFilter.type !== 'all' && activeFilter.floorId === floor.id;
           return (
             <TouchableOpacity
               key={floor.id}
@@ -192,17 +179,14 @@ export default function TablesScreen() {
               onPress={() => handleFloorPress(floor.id)}
               activeOpacity={0.75}
             >
-              <Text style={[
-                styles.filterBtnText,
-                isActive && styles.filterBtnTextActive,
-              ]}>
+              <Text style={[styles.filterBtnText, isActive && styles.filterBtnTextActive]}>
                 {floor.name}
               </Text>
             </TouchableOpacity>
           );
         })}
       </ScrollView>
-{/* Section filter row — only visible when a floor is selected */}
+
       {activeSections.length > 0 && activeFilter.type !== 'all' && (() => {
         const currentFloorId = activeFilter.floorId;
         return (
@@ -212,29 +196,19 @@ export default function TablesScreen() {
             alwaysBounceHorizontal={false}
             contentContainerStyle={styles.sectionRow}
           >
-            {/* "All sections" within this floor */}
             <TouchableOpacity
-              style={[
-                styles.sectionBtn,
-                activeFilter.type === 'floor' && styles.sectionBtnActive,
-              ]}
-              onPress={() =>
-                setActiveFilter({ type: 'floor', floorId: currentFloorId })
-              }
+              style={[styles.sectionBtn, activeFilter.type === 'floor' && styles.sectionBtnActive]}
+              onPress={() => setActiveFilter({ type: 'floor', floorId: currentFloorId })}
               activeOpacity={0.75}
             >
-              <Text style={[
-                styles.sectionBtnText,
-                activeFilter.type === 'floor' && styles.sectionBtnTextActive,
-              ]}>
+              <Text style={[styles.sectionBtnText, activeFilter.type === 'floor' && styles.sectionBtnTextActive]}>
                 All sections
               </Text>
             </TouchableOpacity>
 
             {activeSections.map(section => {
               const isActive =
-                activeFilter.type === 'section' &&
-                activeFilter.sectionId === section.id;
+                activeFilter.type === 'section' && activeFilter.sectionId === section.id;
               return (
                 <TouchableOpacity
                   key={section.id}
@@ -242,10 +216,7 @@ export default function TablesScreen() {
                   onPress={() => handleSectionPress(currentFloorId, section.id)}
                   activeOpacity={0.75}
                 >
-                  <Text style={[
-                    styles.sectionBtnText,
-                    isActive && styles.sectionBtnTextActive,
-                  ]}>
+                  <Text style={[styles.sectionBtnText, isActive && styles.sectionBtnTextActive]}>
                     {section.name}
                   </Text>
                 </TouchableOpacity>
@@ -272,15 +243,20 @@ export default function TablesScreen() {
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>LIVE</Text>
           </View>
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={handleLogout}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.logoutBtnText}>Logout</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* FlatList owns the scroll — filter rows are inside ListHeaderComponent */}
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
         numColumns={3}
-        // key forces remount when column count is stable but filter changes scroll position
         key={
           activeFilter.type === 'all'
             ? 'all'
@@ -324,7 +300,6 @@ export default function TablesScreen() {
                   {cfg.label}
                 </Text>
               </View>
-              {/* Action hint icon */}
               {(canTakeOrder || billRequested) && (
                 <View style={styles.tableAction}>
                   <Text style={styles.tableActionText}>
@@ -382,6 +357,7 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     alignItems: 'flex-end',
+    gap: 6,
   },
   liveIndicator: {
     flexDirection: 'row',
@@ -405,6 +381,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
     letterSpacing: 1,
+  },
+  logoutBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    backgroundColor: '#2a1a1a',
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  logoutBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.error,
+    letterSpacing: 0.5,
   },
 
   // ── Error banner ───────────────────────────────────────────────────────────

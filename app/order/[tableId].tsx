@@ -7,13 +7,13 @@ import {
   MenuItem,
   OrderItem,
   submitOrder,
-  updateOrder,
+  addItemsToOrder,
+  updateItemQuantity,
 } from '@/services/restaurant';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Dimensions,
   FlatList,
@@ -32,47 +32,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CustomAlert, { AlertButton } from '@/components/Customalert';
 
 // ─── Responsive Scaling ───────────────────────────────────────────────────────
-// Scales font sizes and dimensions relative to a 390px wide baseline (iPhone 14)
-// Works correctly regardless of Android font scale setting in Accessibility
 
 const BASE_WIDTH = 390;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / BASE_WIDTH;
 
-// sp() = scale-independent pixels — ignores user font scale (prevents layout breaks)
-// Use for all fontSize values so they scale with screen width, not system font size
 const sp = (size: number) => {
   const newSize = size * scale;
-  // PixelRatio.roundToNearestPixel gives crisp rendering on all densities
   return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
-// dp() = layout dimension scaling — for width/height/padding/margin/radius
 const dp = (size: number) => Math.round(size * scale);
 
-// Clamp helpers — prevents values going too small on tiny screens or too large on tablets
 const clampSp = (size: number, min: number, max: number) =>
   Math.min(Math.max(sp(size), min), max);
 const clampDp = (size: number, min: number, max: number) =>
   Math.min(Math.max(dp(size), min), max);
-
-
-const [alert, setAlert] = useState<{
-  visible: boolean;
-  title: string;
-  message?: string;
-  type?: 'info' | 'success' | 'error' | 'warning';
-  emoji?: string;
-  buttons?: AlertButton[];
-}>({ visible: false, title: '' });
-
-const showAlert = (
-  title: string,
-  message?: string,
-  type: 'info' | 'success' | 'error' | 'warning' = 'info',
-  buttons?: AlertButton[],
-  emoji?: string,
-) => setAlert({ visible: true, title, message, type, buttons, emoji });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +58,9 @@ type CartEntry = {
   price: number;
   quantity: number;
   note: string;
+  // orderItemId is set only for items that already exist in a live order (edit mode).
+  // It's the backend's UUID for that order line — needed for updateItemQuantity calls.
+  orderItemId?: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -103,16 +81,36 @@ export default function OrderScreen() {
   }>();
   const { tableId, tableNumber, status } = params;
 
-  // FIX #5 — delivered tables are locked, not treated as new orders
-  const isDelivered = status === 'delivered';
-  const isEdit = status === 'order_taken';
+  // 'occupied' means the table already has an open order — edit mode.
+  // 'bill_requested' is also an occupied state but typically read-only (waiter can still add).
+  // 'empty' means brand new order.
+  const isEdit = status === 'occupied' || status === 'bill_requested';
+
+  // FIX: useState/showAlert declared INSIDE the component (were outside before — crashed at runtime)
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message?: string;
+    type?: 'info' | 'success' | 'error' | 'warning';
+    emoji?: string;
+    buttons?: AlertButton[];
+  }>({ visible: false, title: '' });
+
+  const showAlert = (
+    title: string,
+    message?: string,
+    type: 'info' | 'success' | 'error' | 'warning' = 'info',
+    buttons?: AlertButton[],
+    emoji?: string,
+  ) => setAlert({ visible: true, title, message, type, buttons, emoji });
+
   // Use a ref for existingOrderId to avoid race condition (FIX #3)
   const existingOrderIdRef = useRef<string | null>(null);
 
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartEntry[]>([]);
-  const [originalCartLength, setOriginalCartLength] = useState(0); // FIX #4
+  const [originalCartLength, setOriginalCartLength] = useState(0);
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -123,7 +121,7 @@ export default function OrderScreen() {
     visible: boolean;
     slotId: string;
     note: string;
-    itemName: string; // FIX #12 — track item name for modal title
+    itemName: string;
   }>({ visible: false, slotId: '', note: '', itemName: '' });
   const [exitConfirm, setExitConfirm] = useState(false);
 
@@ -131,6 +129,7 @@ export default function OrderScreen() {
 
   const loadAll = useCallback(async () => {
     try {
+      // Fetch menu and (if occupied table) existing order in parallel
       const [cats, items] = await Promise.all([
         fetchMenuCategories(),
         fetchMenuItems(),
@@ -142,19 +141,19 @@ export default function OrderScreen() {
       if (isEdit) {
         const existing = await fetchOrderByTable(tableId);
         if (existing) {
-          // FIX #3 — store in ref, not state, so handleSave always reads latest value
           existingOrderIdRef.current = existing.id;
-          setSpecialInstructions(existing.specialInstructions);
-          const loadedCart = existing.items.map(item => ({
+          // specialInstructions not stored by backend — stays empty
+          setSpecialInstructions('');
+          const loadedCart: CartEntry[] = existing.items.map(item => ({
             slotId: uid(),
             menuItemId: item.menuItemId,
             menuItemName: item.menuItemName,
             price: item.price,
             quantity: item.quantity,
-            note: item.note,
+            note: '',             // per-item notes not stored by backend
+            orderItemId: (item as any).orderItemId, // set by parseOrder in restaurant.ts
           }));
           setCart(loadedCart);
-          // FIX #4 — remember original cart size to detect clearing in edit mode
           setOriginalCartLength(loadedCart.length);
         }
       }
@@ -175,7 +174,6 @@ export default function OrderScreen() {
         setShowCart(false);
         return true;
       }
-      // FIX #4 — in edit mode, even empty cart = unsaved changes if we started with items
       const hasChanges =
         cart.length > 0 || (isEdit && originalCartLength > 0 && cart.length === 0);
       if (hasChanges) {
@@ -203,7 +201,6 @@ export default function OrderScreen() {
     ]);
   };
 
-  // FIX #6 — remove the LAST slot for this item (menu card − button)
   const removeLastSlotForItem = (itemId: string) => {
     setCart(prev => {
       const lastIdx = [...prev].map(e => e.menuItemId).lastIndexOf(itemId);
@@ -215,14 +212,13 @@ export default function OrderScreen() {
   const removeSlot = (slotId: string) =>
     setCart(prev => prev.filter(e => e.slotId !== slotId));
 
-  // FIX #1 & #8 — decrement removes slot when qty would go below 1
   const changeQty = (slotId: string, delta: number) => {
     setCart(prev => {
       return prev
         .map(e => {
           if (e.slotId !== slotId) return e;
           const q = e.quantity + delta;
-          if (q < 1) return null; // mark for removal
+          if (q < 1) return null;
           return { ...e, quantity: q };
         })
         .filter(Boolean) as CartEntry[];
@@ -238,14 +234,11 @@ export default function OrderScreen() {
     setNoteModal({ visible: false, slotId: '', note: '', itemName: '' });
   };
 
-  // Total quantity across all slots for a given menu item
   const cartCountForItem = (itemId: string) =>
     cart
       .filter(e => e.menuItemId === itemId)
       .reduce((s, e) => s + e.quantity, 0);
 
-  // Unique item count (distinct menuItemIds) for cart badge
-  // FIX #9 — badge shows distinct items, not total quantity
   const uniqueItemCount = new Set(cart.map(e => e.menuItemId)).size;
 
   // ─── Submit ────────────────────────────────────────────────────────────────
@@ -257,25 +250,46 @@ export default function OrderScreen() {
     }
     setSaving(true);
     try {
-      const items: OrderItem[] = cart.map(e => ({
-        menuItemId: e.menuItemId,
-        menuItemName: e.menuItemName,
-        price: e.price,
-        quantity: e.quantity,
-        note: e.note,
-      }));
+      const orderId = existingOrderIdRef.current;
 
-      // FIX #3 — read from ref, not state, guaranteed to be latest value
-      if (isEdit && existingOrderIdRef.current) {
-        await updateOrder(existingOrderIdRef.current, items, specialInstructions);
+      if (isEdit && orderId) {
+        // Edit mode: figure out which cart entries are new vs already in the order.
+        // Entries with an orderItemId already exist on the backend.
+        // Entries without one were just added by the waiter in this session.
+        const newEntries = cart.filter(e => !e.orderItemId);
+        const existingEntries = cart.filter(e => e.orderItemId);
+
+        // Add brand-new items to the open order
+        if (newEntries.length > 0) {
+          await addItemsToOrder(
+            orderId,
+            newEntries.map(e => ({
+              menuItemId: e.menuItemId,
+              menuItemName: e.menuItemName,
+              price: e.price,
+              quantity: e.quantity,
+              note: e.note,
+            })),
+          );
+        }
+
+        // Update quantities for items already in the order
+        // (only send if quantity differs from what was loaded — we track originals via orderItemId)
+        for (const entry of existingEntries) {
+          if (entry.orderItemId) {
+            await updateItemQuantity(orderId, entry.orderItemId, entry.quantity);
+          }
+        }
       } else {
-        await submitOrder(
-          tableId,
-          items,
-          specialInstructions,
-          'w1',
-          'Demo Waiter'
-        );
+        // New order: POST /orders with tableId + items
+        const items: OrderItem[] = cart.map(e => ({
+          menuItemId: e.menuItemId,
+          menuItemName: e.menuItemName,
+          price: e.price,
+          quantity: e.quantity,
+          note: e.note,
+        }));
+        await submitOrder(tableId, items);
       }
 
       showAlert(
@@ -283,15 +297,14 @@ export default function OrderScreen() {
         `Table ${tableNumber} order has been ${isEdit ? 'updated' : 'submitted'} successfully.`,
         'success',
         [{ text: 'OK', onPress: () => router.replace('/tables' as any) }]
-    );
-    } catch {
-      showAlert('Error', 'Failed to save the order. Please try again.', 'error');
+      );
+    } catch (e: any) {
+      showAlert('Error', e?.message ?? 'Failed to save the order. Please try again.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  // FIX #13 — context-aware back guard text
   const handleBack = () => {
     const hasChanges =
       cart.length > 0 || (isEdit && originalCartLength > 0 && cart.length === 0);
@@ -316,44 +329,10 @@ export default function OrderScreen() {
     );
   }
 
-  // FIX #16 — delivered tables get a locked screen
-  if (isDelivered) {
-    return (
-      <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + clampDp(12, 10, 20) }]}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Table {tableNumber}</Text>
-            <Text style={[styles.headerSub, { color: Colors.statusDeliveredText }]}>
-              Delivered
-            </Text>
-          </View>
-          <View style={styles.backBtn} />
-        </View>
-        <View style={styles.lockedContainer}>
-          <Text style={styles.lockedEmoji}>✅</Text>
-          <Text style={styles.lockedTitle}>Order Delivered</Text>
-          <Text style={styles.lockedBody}>
-            This table's order has been delivered.{'\n'}No changes can be made.
-          </Text>
-          <TouchableOpacity
-            style={styles.lockedBtn}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.lockedBtnText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
 
       {/* ── Header ── */}
-      {/* FIX #15 — edit mode gets a distinct amber accent */}
       <View
         style={[
           styles.header,
@@ -372,7 +351,6 @@ export default function OrderScreen() {
         </View>
         <TouchableOpacity style={styles.cartBtn} onPress={() => setShowCart(true)}>
           <Text style={styles.cartIcon}>🧾</Text>
-          {/* FIX #9 — badge shows unique item count */}
           {uniqueItemCount > 0 && (
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>{uniqueItemCount}</Text>
@@ -381,7 +359,7 @@ export default function OrderScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* FIX #15 — edit mode warning banner */}
+      {/* Edit mode warning banner */}
       {isEdit && (
         <View style={styles.editBanner}>
           <Text style={styles.editBannerText}>
@@ -397,7 +375,7 @@ export default function OrderScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.catRow}
           alwaysBounceHorizontal={false}
-          style={{ flexShrink: 0 }} 
+          style={{ flexShrink: 0 }}
         >
           {categories.map(cat => (
             <TouchableOpacity
@@ -406,7 +384,12 @@ export default function OrderScreen() {
               onPress={() => setActiveCategory(cat.id)}
               activeOpacity={0.75}
             >
-              <Text style={styles.catIcon}>{cat.icon}</Text>
+              {/* icon is optional — API doesn't return one, show a fallback */}
+              {cat.icon ? (
+                <Text style={styles.catIcon}>{cat.icon}</Text>
+              ) : (
+                <Text style={styles.catIcon}>🍽️</Text>
+              )}
               <Text
                 style={[
                   styles.catLabel,
@@ -428,7 +411,6 @@ export default function OrderScreen() {
           styles.menuList,
           { paddingBottom: cart.length > 0 ? bottomBarHeight + clampDp(16, 12, 24) : clampDp(24, 16, 32) },
         ]}
-        // FIX #10 — empty state when category has no available items
         ListEmptyComponent={
           <View style={styles.emptyCategory}>
             <Text style={styles.emptyCategoryEmoji}>🍽️</Text>
@@ -446,25 +428,24 @@ export default function OrderScreen() {
             >
               <View style={styles.menuCardLeft}>
                 <View style={styles.menuCardTop}>
-                  {/* Veg/Non-veg indicator */}
-                  <View
-                    style={[
-                      styles.vegBadge,
-                      { backgroundColor: item.isVeg ? '#1a2a1a' : '#2a1a1a' },
-                    ]}
-                  >
+                  {/* Veg/Non-veg badge — only shown if isVeg is explicitly set */}
+                  {item.isVeg !== undefined && (
                     <View
                       style={[
-                        styles.vegDot,
-                        {
-                          backgroundColor: item.isVeg
-                            ? Colors.primary
-                            : '#d9504a',
-                        },
+                        styles.vegBadge,
+                        { backgroundColor: item.isVeg ? '#1a2a1a' : '#2a1a1a' },
                       ]}
-                    />
-                  </View>
-                  {item.tags.slice(0, 2).map(tag => (
+                    >
+                      <View
+                        style={[
+                          styles.vegDot,
+                          { backgroundColor: item.isVeg ? Colors.primary : '#d9504a' },
+                        ]}
+                      />
+                    </View>
+                  )}
+                  {/* tags are optional — API doesn't return them */}
+                  {(item.tags ?? []).slice(0, 2).map(tag => (
                     <View key={tag} style={styles.tagChip}>
                       <Text style={styles.tagText}>{tag}</Text>
                     </View>
@@ -473,9 +454,12 @@ export default function OrderScreen() {
                 <Text style={styles.menuItemName} numberOfLines={1}>
                   {item.name}
                 </Text>
-                <Text style={styles.menuItemDesc} numberOfLines={2}>
-                  {item.description}
-                </Text>
+                {/* description is optional — API doesn't return it */}
+                {item.description ? (
+                  <Text style={styles.menuItemDesc} numberOfLines={2}>
+                    {item.description}
+                  </Text>
+                ) : null}
                 <Text style={styles.menuItemPrice}>{formatPrice(item.price)}</Text>
               </View>
 
@@ -485,7 +469,6 @@ export default function OrderScreen() {
                     <Text style={styles.unavailableText}>N/A</Text>
                   </View>
                 ) : count === 0 ? (
-                  // FIX #6 — shows "+ Add" when nothing in cart
                   <TouchableOpacity
                     style={styles.addBtn}
                     onPress={() => addToCart(item)}
@@ -494,7 +477,6 @@ export default function OrderScreen() {
                     <Text style={styles.addBtnText}>+ Add</Text>
                   </TouchableOpacity>
                 ) : (
-                  // FIX #6 & #7 — inline stepper when item is in cart
                   <View style={styles.inlineStepper}>
                     <TouchableOpacity
                       style={styles.stepperBtn}
@@ -615,7 +597,6 @@ export default function OrderScreen() {
                       </Text>
                     </View>
                     <View style={styles.cartEntryActions}>
-                      {/* FIX #1 & #8 — qty stepper removes slot at 0 */}
                       <View style={styles.qtyRow}>
                         <TouchableOpacity
                           style={styles.qtyBtn}
@@ -633,7 +614,6 @@ export default function OrderScreen() {
                           <Text style={styles.qtyBtnText}>+</Text>
                         </TouchableOpacity>
                       </View>
-                      {/* FIX #12 — pass item name into note modal */}
                       <TouchableOpacity
                         style={styles.noteBtn}
                         onPress={() =>
@@ -668,7 +648,7 @@ export default function OrderScreen() {
                 ))
               )}
 
-              {/* FIX #11 — special instructions visible prominently in cart */}
+              {/* Kitchen instructions — UI-only, not sent to backend */}
               <View style={styles.specialBox}>
                 <Text style={styles.specialLabel}>⚠️  Kitchen Instructions</Text>
                 <TextInput
@@ -696,7 +676,6 @@ export default function OrderScreen() {
               )}
             </ScrollView>
 
-            {/* FIX #2 — cart modal save button has proper loading state */}
             {cart.length > 0 && (
               <TouchableOpacity
                 style={[
@@ -739,7 +718,6 @@ export default function OrderScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.noteModal}>
-            {/* FIX #12 — shows which item the note is for */}
             <Text style={styles.noteModalTitle} numberOfLines={1}>
               Note for: {noteModal.itemName}
             </Text>
@@ -762,12 +740,7 @@ export default function OrderScreen() {
               <TouchableOpacity
                 style={styles.noteCancelBtn}
                 onPress={() =>
-                  setNoteModal({
-                    visible: false,
-                    slotId: '',
-                    note: '',
-                    itemName: '',
-                  })
+                  setNoteModal({ visible: false, slotId: '', note: '', itemName: '' })
                 }
               >
                 <Text style={styles.noteCancelText}>Cancel</Text>
@@ -790,7 +763,6 @@ export default function OrderScreen() {
       >
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmModal}>
-            {/* FIX #13 — context-aware title */}
             <Text style={styles.confirmTitle}>
               {isEdit ? 'Discard Changes?' : 'Discard Order?'}
             </Text>
@@ -819,13 +791,16 @@ export default function OrderScreen() {
           </View>
         </View>
       </Modal>
+
+      <CustomAlert
+        {...alert}
+        onDismiss={() => setAlert(prev => ({ ...prev, visible: false }))}
+      />
     </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-// All fontSize uses clampSp() — ignores Android system font scale, scales with screen width
-// All layout dimensions use clampDp() — scales with screen width, clamped for tiny/tablet screens
 
 const styles = StyleSheet.create({
   container: {
@@ -844,45 +819,6 @@ const styles = StyleSheet.create({
     fontSize: clampSp(14, 12, 16),
   },
 
-  // ── Locked (delivered) screen ──────────────────────────────────────────────
-  lockedContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: clampDp(32, 24, 48),
-    gap: clampDp(12, 8, 20),
-  },
-  lockedEmoji: {
-    fontSize: clampSp(52, 40, 64),
-    marginBottom: clampDp(8, 4, 16),
-  },
-  lockedTitle: {
-    fontSize: clampSp(22, 18, 28),
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  lockedBody: {
-    fontSize: clampSp(14, 12, 16),
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: clampSp(21, 18, 26),
-  },
-  lockedBtn: {
-    marginTop: clampDp(8, 4, 16),
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
-    paddingHorizontal: clampDp(32, 24, 48),
-    paddingVertical: clampDp(14, 12, 18),
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-  },
-  lockedBtnText: {
-    fontSize: clampSp(15, 13, 17),
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-
   // ── Header ────────────────────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
@@ -894,7 +830,6 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.surfaceBorder,
     gap: clampDp(8, 4, 12),
   },
-  // FIX #15 — edit mode header has amber tint border
   headerEdit: {
     borderBottomColor: Colors.warning + '80',
     borderBottomWidth: 2,
@@ -957,7 +892,6 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
 
-  // FIX #15 — edit mode warning banner
   editBanner: {
     backgroundColor: Colors.warning + '18',
     borderBottomWidth: 1,
@@ -1012,12 +946,12 @@ const styles = StyleSheet.create({
     height: clampDp(74, 68, 84),
     justifyContent: 'center',
   },
+
   // ── Menu List ──────────────────────────────────────────────────────────────
   menuList: {
     padding: clampDp(12, 8, 20),
     gap: clampDp(10, 8, 14),
   },
-  // FIX #10 — empty category state
   emptyCategory: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1104,8 +1038,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.primary,
   },
-
-  // plain add button (count === 0)
   addBtn: {
     backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.md,
@@ -1120,8 +1052,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.textPrimary,
   },
-
-  // FIX #6 — inline stepper on menu card (count > 0)
   inlineStepper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1157,7 +1087,6 @@ const styles = StyleSheet.create({
     minWidth: clampDp(28, 24, 36),
     textAlign: 'center',
   },
-
   unavailableChip: {
     backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.md,
@@ -1373,8 +1302,6 @@ const styles = StyleSheet.create({
   removeBtnText: {
     fontSize: clampSp(18, 16, 22),
   },
-
-  // FIX #11 — special instructions with prominent label
   specialBox: {
     padding: clampDp(14, 10, 20),
     borderBottomWidth: 1,

@@ -29,17 +29,17 @@ export type TableStatus = 'empty' | 'occupied' | 'bill_requested';
 
 export type Table = {
   id: string;
-  number: string;       // e.g. "T1" — string to match API
+  number: string;
   capacity: number;
   status: TableStatus;
-  section: string;      // section name
-  floor: string;        // floor name
+  section: string;
+  floor: string;
   floorId: string;
   sectionId: string;
   occupiedAt: string | null;
 };
 
-// Raw shapes returned by /floors — used internally when parsing
+// Raw shapes returned by /floors
 export type ApiTable = {
   id: string;
   tableNumber: string;
@@ -84,58 +84,91 @@ type ApiResponse<T> = {
   data: T;
 };
 
+// ─── Menu Types ───────────────────────────────────────────────────────────────
+// Real API: GET /menu returns categories with embedded dishes
+// Fields like isVeg, description, tags, icon are NOT in the backend —
+// they're optional here so the UI degrades gracefully when absent.
+
 export type MenuCategory = {
   id: string;
   name: string;
-  icon: string;
+  icon?: string;       // not in API — UI falls back to a default emoji
 };
 
 export type MenuItem = {
-  id: string;
+  id: string;          // dish UUID from backend
   categoryId: string;
   name: string;
-  description: string;
   price: number;
-  isAvailable: boolean;
-  isVeg: boolean;
-  tags: string[];
+  isAvailable: boolean; // mapped from `available` in API response
+  description?: string; // not in API
+  isVeg?: boolean;      // not in API
+  tags?: string[];      // not in API
 };
+
+// Raw shapes returned by GET /menu
+type ApiDish = {
+  id: string;
+  name: string;
+  price: number;
+  available: boolean;
+  recipe?: string;
+};
+
+type ApiMenuCategory = {
+  id: string;
+  name: string;
+  items: ApiDish[];
+};
+
+// ─── Order Types ──────────────────────────────────────────────────────────────
 
 export type OrderItem = {
   menuItemId: string;
   menuItemName: string;
   price: number;
   quantity: number;
-  note: string; // per-item note (e.g. "less spicy", "medium rare")
+  note: string;
+};
+
+// Raw order item as returned by GET /orders/table/:tableId
+type ApiOrderItem = {
+  id: string;          // orderItemId — needed for update/remove calls
+  menuItemId: string;
+  dishName: string;
+  price: number;
+  quantity: number;
+  dishStatus: 'ordered' | 'preparing' | 'served';
+};
+
+// Raw order as returned by GET /orders/table/:tableId
+type ApiOrder = {
+  id: string;
+  tableId: string;
+  items: ApiOrderItem[];
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  total: number;
 };
 
 export type Order = {
   id: string;
   tableId: string;
-  tableNumber: number;
-  waiterId: string;
-  waiterName: string;
   items: OrderItem[];
-  status: 'pending' | 'confirmed' | 'delivered' | 'cancelled';
-  specialInstructions: string; // overall order note
+  status: string;
+  specialInstructions: string;
   createdAt: string;
   updatedAt: string;
   totalAmount: number;
 };
 
 export type LoginPayload = {
-  username: string;
+  email: string;
   password: string;
 };
 
-export type LoginResponse = {
-  token: string;
-  waiter: {
-    id: string;
-    name: string;
-    role: string;
-  };
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseFloors(apiFloors: ApiFloor[]): { floors: Floor[]; tables: Table[] } {
   const allTables: Table[] = [];
@@ -164,52 +197,28 @@ function parseFloors(apiFloors: ApiFloor[]): { floors: Floor[]; tables: Table[] 
   return { floors, tables: allTables };
 }
 
-// ─── Demo Data ────────────────────────────────────────────────────────────────
-
-const DEMO_CATEGORIES: MenuCategory[] = [
-  { id: 'c1', name: 'Starters',  icon: '🥗' },
-  { id: 'c2', name: 'Mains',     icon: '🍽️' },
-  { id: 'c3', name: 'Grills',    icon: '🥩' },
-  { id: 'c4', name: 'Pasta',     icon: '🍝' },
-  { id: 'c5', name: 'Drinks',    icon: '🥤' },
-  { id: 'c6', name: 'Desserts',  icon: '🍮' },
-];
-
-const DEMO_MENU_ITEMS: MenuItem[] = [
-  // Starters
-  { id: 'm1',  categoryId: 'c1', name: 'Garlic Bread',          description: 'Toasted sourdough with herb butter and roasted garlic',      price: 249,  isAvailable: true,  isVeg: true,  tags: ['popular'] },
-  { id: 'm2',  categoryId: 'c1', name: 'Bruschetta',            description: 'Fresh tomatoes, basil, olive oil on grilled ciabatta',       price: 299,  isAvailable: true,  isVeg: true,  tags: [] },
-  { id: 'm3',  categoryId: 'c1', name: 'Chicken Wings',         description: 'Crispy fried wings tossed in smoky buffalo sauce',           price: 449,  isAvailable: true,  isVeg: false, tags: ['spicy', 'popular'] },
-  { id: 'm4',  categoryId: 'c1', name: 'Calamari Fritti',       description: 'Lightly battered squid rings with marinara dip',             price: 399,  isAvailable: true,  isVeg: false, tags: [] },
-  { id: 'm5',  categoryId: 'c1', name: 'Soup of the Day',       description: 'Chef\'s daily fresh soup served with crusty bread',          price: 199,  isAvailable: true,  isVeg: true,  tags: [] },
-  // Mains
-  { id: 'm6',  categoryId: 'c2', name: 'Grilled Salmon',        description: 'Atlantic salmon fillet with lemon butter, mashed potato',    price: 799,  isAvailable: true,  isVeg: false, tags: ['chef special'] },
-  { id: 'm7',  categoryId: 'c2', name: 'Butter Chicken',        description: 'Tender chicken in rich tomato-cream curry, basmati rice',    price: 549,  isAvailable: true,  isVeg: false, tags: ['popular'] },
-  { id: 'm8',  categoryId: 'c2', name: 'Paneer Tikka Masala',   description: 'Cottage cheese in spiced onion-tomato gravy, naan',          price: 499,  isAvailable: true,  isVeg: true,  tags: ['popular'] },
-  { id: 'm9',  categoryId: 'c2', name: 'Fish & Chips',          description: 'Beer-battered cod with thick-cut fries and tartar sauce',    price: 649,  isAvailable: false, isVeg: false, tags: [] },
-  { id: 'm10', categoryId: 'c2', name: 'Mushroom Risotto',      description: 'Arborio rice with wild mushrooms, parmesan, fresh thyme',    price: 499,  isAvailable: true,  isVeg: true,  tags: ['chef special'] },
-  // Grills
-  { id: 'm11', categoryId: 'c3', name: 'Ribeye Steak 300g',     description: 'Prime aged ribeye, choice of sauce and two sides',          price: 1499, isAvailable: true,  isVeg: false, tags: ['premium'] },
-  { id: 'm12', categoryId: 'c3', name: 'Sirloin Steak 250g',    description: 'Classic sirloin, grilled to order, herb compound butter',   price: 1199, isAvailable: true,  isVeg: false, tags: ['popular'] },
-  { id: 'm13', categoryId: 'c3', name: 'BBQ Lamb Chops',        description: 'Marinated lamb chops, mint yogurt, grilled vegetables',     price: 999,  isAvailable: true,  isVeg: false, tags: [] },
-  { id: 'm14', categoryId: 'c3', name: 'Mixed Grill Platter',   description: 'Assorted grilled meats: chicken, lamb, beef with dips',     price: 1299, isAvailable: true,  isVeg: false, tags: ['popular', 'for sharing'] },
-  // Pasta
-  { id: 'm15', categoryId: 'c4', name: 'Spaghetti Carbonara',   description: 'Pancetta, egg yolk, pecorino, black pepper, al dente',      price: 499,  isAvailable: true,  isVeg: false, tags: ['popular'] },
-  { id: 'm16', categoryId: 'c4', name: 'Penne Arrabbiata',      description: 'Spicy tomato sauce, garlic, fresh basil, parmesan',         price: 399,  isAvailable: true,  isVeg: true,  tags: ['spicy'] },
-  { id: 'm17', categoryId: 'c4', name: 'Fettuccine Alfredo',    description: 'Creamy butter parmesan sauce, grilled chicken',             price: 549,  isAvailable: true,  isVeg: false, tags: [] },
-  { id: 'm18', categoryId: 'c4', name: 'Lasagna al Forno',      description: 'Layered beef bolognese, béchamel, oven-baked',              price: 599,  isAvailable: true,  isVeg: false, tags: [] },
-  // Drinks
-  { id: 'm19', categoryId: 'c5', name: 'Fresh Lime Soda',       description: 'Freshly squeezed lime, soda, choice of sweet or salted',    price: 129,  isAvailable: true,  isVeg: true,  tags: [] },
-  { id: 'm20', categoryId: 'c5', name: 'Mango Lassi',           description: 'Thick chilled yogurt drink with Alphonso mango pulp',       price: 179,  isAvailable: true,  isVeg: true,  tags: ['popular'] },
-  { id: 'm21', categoryId: 'c5', name: 'Cold Coffee',           description: 'Espresso blended with milk, ice cream, chocolate syrup',    price: 199,  isAvailable: true,  isVeg: true,  tags: [] },
-  { id: 'm22', categoryId: 'c5', name: 'Sparkling Water',       description: 'Chilled sparkling mineral water 500ml',                    price: 99,   isAvailable: true,  isVeg: true,  tags: [] },
-  { id: 'm23', categoryId: 'c5', name: 'Virgin Mojito',         description: 'Muddled mint, lime, brown sugar, soda, crushed ice',        price: 199,  isAvailable: true,  isVeg: true,  tags: ['popular'] },
-  // Desserts
-  { id: 'm24', categoryId: 'c6', name: 'Chocolate Lava Cake',   description: 'Warm dark chocolate cake, molten centre, vanilla ice cream', price: 349, isAvailable: true,  isVeg: true,  tags: ['popular'] },
-  { id: 'm25', categoryId: 'c6', name: 'Tiramisu',              description: 'Classic Italian ladyfinger dessert, mascarpone, espresso',  price: 299,  isAvailable: true,  isVeg: true,  tags: [] },
-  { id: 'm26', categoryId: 'c6', name: 'Gulab Jamun',           description: 'Soft milk-solid dumplings in rose-cardamom sugar syrup',   price: 199,  isAvailable: true,  isVeg: true,  tags: ['popular'] },
-  { id: 'm27', categoryId: 'c6', name: 'Cheesecake',            description: 'New York style cheesecake with seasonal berry compote',     price: 349,  isAvailable: true,  isVeg: true,  tags: [] },
-];
+// Maps the flat ApiOrder from the backend into the Order type the UI expects.
+// The backend doesn't store specialInstructions or per-item notes — those are
+// UI-only concepts, so they default to empty strings.
+function parseOrder(apiOrder: ApiOrder): Order {
+  return {
+    id: apiOrder.id,
+    tableId: apiOrder.tableId,
+    items: apiOrder.items.map(item => ({
+      menuItemId: item.menuItemId,
+      menuItemName: item.dishName,
+      price: item.price,
+      quantity: item.quantity,
+      note: '',                   // backend has no per-item note
+      orderItemId: item.id,       // kept for update/remove calls
+    })),
+    status: apiOrder.status,
+    specialInstructions: '',      // backend has no specialInstructions
+    createdAt: apiOrder.createdAt,
+    updatedAt: apiOrder.updatedAt,
+    totalAmount: apiOrder.total,
+  };
+}
 
 // ─── API Functions ────────────────────────────────────────────────────────────
 
@@ -237,50 +246,110 @@ export const fetchTables = async (): Promise<Table[]> => {
 };
 
 // MENU
+// GET /menu returns categories with embedded dishes.
+// We split them into two flat lists so [tableId].tsx can work with them as before.
 export const fetchMenuCategories = async (): Promise<MenuCategory[]> => {
-  // TODO: Replace with real API call when backend is ready
-  await new Promise(r => setTimeout(r, 300));
-  return DEMO_CATEGORIES;
+  const res = await api.get<ApiResponse<ApiMenuCategory[]>>('/menu');
+  return res.data.data.map(cat => ({
+    id: cat.id,
+    name: cat.name,
+    // Backend has no icon — UI should handle icon being undefined
+  }));
 };
 
 export const fetchMenuItems = async (): Promise<MenuItem[]> => {
-  // TODO: Replace with real API call when backend is ready
-  await new Promise(r => setTimeout(r, 400));
-  return DEMO_MENU_ITEMS;
+  const res = await api.get<ApiResponse<ApiMenuCategory[]>>('/menu');
+  const items: MenuItem[] = [];
+  for (const cat of res.data.data) {
+    for (const dish of cat.items) {
+      items.push({
+        id: dish.id,
+        categoryId: cat.id,
+        name: dish.name,
+        price: dish.price,
+        isAvailable: dish.available,
+        // description, isVeg, tags are not in the API — left undefined
+      });
+    }
+  }
+  return items;
 };
 
 // ORDERS
-export const fetchOrderByTable = async (tableId: string): Promise<Order | null> => {
-  // TODO: Replace with real API call when backend is ready
-  // return api.get<ApiResponse<Order>>(`/orders/table/${tableId}`).then(r => r.data.data).catch(() => null);
 
-  await new Promise(r => setTimeout(r, 500));
-  return null;
+// Returns the currently open order for a table, or null if none.
+export const fetchOrderByTable = async (tableId: string): Promise<Order | null> => {
+  const res = await api.get<ApiResponse<ApiOrder | null>>(`/orders/table/${tableId}`);
+  if (!res.data.data) return null;
+  return parseOrder(res.data.data);
 };
 
+// Places a NEW order on an empty table.
+// Backend only needs tableId + items (menuItemId + quantity).
+// specialInstructions, waiterId, waiterName are UI-only — not sent.
 export const submitOrder = async (
   tableId: string,
   items: OrderItem[],
-  specialInstructions: string,
-  waiterId: string,
-  waiterName: string,
 ): Promise<{ success: boolean; orderId: string }> => {
-  // TODO: Replace with real API call when backend is ready
-  // return api.post('/orders', { tableId, items, specialInstructions, waiterId, waiterName }).then(r => r.data);
-
-  await new Promise(r => setTimeout(r, 700));
-  return { success: true, orderId: `ord_${Date.now()}` };
+  const res = await api.post<ApiResponse<ApiOrder>>('/orders', {
+    tableId,
+    items: items.map(i => ({
+      menuItemId: i.menuItemId,
+      quantity: i.quantity,
+    })),
+  });
+  if (!res.data.success) throw new Error(res.data.message ?? 'Failed to place order');
+  return { success: true, orderId: res.data.data.id };
 };
 
-export const updateOrder = async (
+// Adds NEW items to an existing open order.
+// Use this when the waiter is in edit mode and adds items not previously in the order.
+export const addItemsToOrder = async (
   orderId: string,
   items: OrderItem[],
-  specialInstructions: string,
 ): Promise<{ success: boolean }> => {
-  // TODO: Replace with real API call when backend is ready
-  // return api.put(`/orders/${orderId}`, { items, specialInstructions }).then(r => r.data);
+  const res = await api.post<ApiResponse<ApiOrder>>(`/orders/${orderId}/items`, {
+    items: items.map(i => ({
+      menuItemId: i.menuItemId,
+      quantity: i.quantity,
+    })),
+  });
+  if (!res.data.success) throw new Error(res.data.message ?? 'Failed to add items');
+  return { success: true };
+};
 
-  await new Promise(r => setTimeout(r, 700));
+// Updates the quantity of one specific item already in an open order.
+// orderItemId is the item's own UUID (ApiOrderItem.id), NOT the menuItemId.
+export const updateItemQuantity = async (
+  orderId: string,
+  orderItemId: string,
+  quantity: number,
+): Promise<{ success: boolean }> => {
+  const res = await api.put<ApiResponse<ApiOrder>>(`/orders/${orderId}/items/quantity`, {
+    orderItemId,
+    quantity,
+  });
+  if (!res.data.success) throw new Error(res.data.message ?? 'Failed to update quantity');
+  return { success: true };
+};
+
+// Removes a specific item from an open order.
+// Only works if dishStatus is 'ordered' (not yet in preparation).
+export const removeItemFromOrder = async (
+  orderId: string,
+  orderItemId: string,
+): Promise<{ success: boolean }> => {
+  const res = await api.delete<ApiResponse<ApiOrder>>(`/orders/${orderId}/items`, {
+    data: { orderItemId },
+  });
+  if (!res.data.success) throw new Error(res.data.message ?? 'Failed to remove item');
+  return { success: true };
+};
+
+// Marks the table as bill_requested. Does not modify the order.
+export const requestBill = async (tableId: string): Promise<{ success: boolean }> => {
+  const res = await api.post<ApiResponse<null>>(`/orders/table/${tableId}/request-bill`);
+  if (!res.data.success) throw new Error(res.data.message ?? 'Failed to request bill');
   return { success: true };
 };
 
