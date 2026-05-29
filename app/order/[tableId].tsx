@@ -5,6 +5,8 @@ import {
   fetchOrderByTable,
   MenuCategory,
   MenuItem,
+  Variant,
+  Addon,
   OrderItem,
   submitOrder,
   addItemsToOrder,
@@ -55,20 +57,52 @@ type CartEntry = {
   slotId: string;
   menuItemId: string;
   menuItemName: string;
+  // base price of the item (no variant, no addons)
   price: number;
   quantity: number;
   note: string;
-  // orderItemId is set only for items that already exist in a live order (edit mode).
-  // It's the backend's UUID for that order line — needed for updateItemQuantity calls.
+  // Variant — null when item has no variants
+  variantId: string | null;
+  variantName: string | null;
+  variantPrice: number | null;
+  // Addons — selected by user (optional)
+  selectedAddons: Addon[];
+  // orderItemId is set only for items already in a live backend order (edit mode)
   orderItemId?: string;
+};
+
+// State for the variant/addon picker modal
+type PickerModal = {
+  visible: boolean;
+  item: MenuItem | null;
+  selectedVariantId: string | null;
+  selectedAddonIds: Set<string>;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+// Effective unit price for a cart entry = variantPrice (if any) + sum of addon prices
+const entryUnitPrice = (entry: CartEntry): number => {
+  const base = entry.variantPrice !== null ? entry.variantPrice : entry.price;
+  const addonSum = entry.selectedAddons.reduce((s, a) => s + a.price, 0);
+  return base + addonSum;
+};
+
 const calcTotal = (cart: CartEntry[]) =>
-  cart.reduce((sum, e) => sum + e.price * e.quantity, 0);
+  cart.reduce((sum, e) => sum + entryUnitPrice(e) * e.quantity, 0);
+
 const formatPrice = (p: number) => `₹${p.toLocaleString('en-IN')}`;
+
+// Build a human-readable subtitle for a cart entry showing variant + addons
+const entrySubtitle = (entry: CartEntry): string | null => {
+  const parts: string[] = [];
+  if (entry.variantName) parts.push(entry.variantName);
+  if (entry.selectedAddons.length > 0)
+    parts.push(entry.selectedAddons.map(a => a.name).join(', '));
+  return parts.length > 0 ? parts.join(' · ') : null;
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -81,12 +115,8 @@ export default function OrderScreen() {
   }>();
   const { tableId, tableNumber, status } = params;
 
-  // 'occupied' means the table already has an open order — edit mode.
-  // 'bill_requested' is also an occupied state but typically read-only (waiter can still add).
-  // 'empty' means brand new order.
   const isEdit = status === 'occupied' || status === 'bill_requested';
 
-  // FIX: useState/showAlert declared INSIDE the component (were outside before — crashed at runtime)
   const [alert, setAlert] = useState<{
     visible: boolean;
     title: string;
@@ -104,7 +134,6 @@ export default function OrderScreen() {
     emoji?: string,
   ) => setAlert({ visible: true, title, message, type, buttons, emoji });
 
-  // Use a ref for existingOrderId to avoid race condition (FIX #3)
   const existingOrderIdRef = useRef<string | null>(null);
 
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -125,11 +154,84 @@ export default function OrderScreen() {
   }>({ visible: false, slotId: '', note: '', itemName: '' });
   const [exitConfirm, setExitConfirm] = useState(false);
 
+  // ─── Variant / Addon Picker ────────────────────────────────────────────────
+
+  const [picker, setPicker] = useState<PickerModal>({
+    visible: false,
+    item: null,
+    selectedVariantId: null,
+    selectedAddonIds: new Set(),
+  });
+
+  const openPicker = (item: MenuItem) => {
+    setPicker({
+      visible: true,
+      item,
+      // Pre-select first variant if there is one
+      selectedVariantId: item.variants.length > 0 ? item.variants[0].id : null,
+      selectedAddonIds: new Set(),
+    });
+  };
+
+  const closePicker = () =>
+    setPicker({ visible: false, item: null, selectedVariantId: null, selectedAddonIds: new Set() });
+
+  const toggleAddon = (addonId: string) => {
+    setPicker(prev => {
+      const next = new Set(prev.selectedAddonIds);
+      if (next.has(addonId)) next.delete(addonId);
+      else next.add(addonId);
+      return { ...prev, selectedAddonIds: next };
+    });
+  };
+
+  const confirmPicker = () => {
+    const { item, selectedVariantId, selectedAddonIds } = picker;
+    if (!item) return;
+
+    // Variant is mandatory if the item has variants
+    if (item.variants.length > 0 && !selectedVariantId) {
+      showAlert('Select a Variant', `Please choose a variant for ${item.name}.`, 'warning');
+      return;
+    }
+
+    const chosenVariant = item.variants.find(v => v.id === selectedVariantId) ?? null;
+    const chosenAddons = item.addons.filter(a => selectedAddonIds.has(a.id));
+
+    setCart(prev => [
+      ...prev,
+      {
+        slotId: uid(),
+        menuItemId: item.id,
+        menuItemName: item.name,
+        price: item.price,
+        quantity: 1,
+        note: '',
+        variantId: chosenVariant?.id ?? null,
+        variantName: chosenVariant?.name ?? null,
+        variantPrice: chosenVariant?.price ?? null,
+        selectedAddons: chosenAddons,
+      },
+    ]);
+    closePicker();
+  };
+
+  // Derived picker total for the confirm button
+  const pickerTotal = (() => {
+    const { item, selectedVariantId, selectedAddonIds } = picker;
+    if (!item) return 0;
+    const variant = item.variants.find(v => v.id === selectedVariantId);
+    const base = variant ? variant.price : item.price;
+    const addonsSum = item.addons
+      .filter(a => selectedAddonIds.has(a.id))
+      .reduce((s, a) => s + a.price, 0);
+    return base + addonsSum;
+  })();
+
   // ─── Load data ─────────────────────────────────────────────────────────────
 
   const loadAll = useCallback(async () => {
     try {
-      // Fetch menu and (if occupied table) existing order in parallel
       const [cats, items] = await Promise.all([
         fetchMenuCategories(),
         fetchMenuItems(),
@@ -142,7 +244,6 @@ export default function OrderScreen() {
         const existing = await fetchOrderByTable(tableId);
         if (existing) {
           existingOrderIdRef.current = existing.id;
-          // specialInstructions not stored by backend — stays empty
           setSpecialInstructions('');
           const loadedCart: CartEntry[] = existing.items.map(item => ({
             slotId: uid(),
@@ -150,8 +251,12 @@ export default function OrderScreen() {
             menuItemName: item.menuItemName,
             price: item.price,
             quantity: item.quantity,
-            note: '',             // per-item notes not stored by backend
-            orderItemId: (item as any).orderItemId, // set by parseOrder in restaurant.ts
+            note: '',
+            variantId: item.variantId,
+            variantName: item.variantName,
+            variantPrice: item.variantPrice,
+            selectedAddons: [], // backend doesn't return addon detail on existing items
+            orderItemId: (item as any).orderItemId,
           }));
           setCart(loadedCart);
           setOriginalCartLength(loadedCart.length);
@@ -170,6 +275,10 @@ export default function OrderScreen() {
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (picker.visible) {
+        closePicker();
+        return true;
+      }
       if (showCart) {
         setShowCart(false);
         return true;
@@ -183,24 +292,35 @@ export default function OrderScreen() {
       return false;
     });
     return () => sub.remove();
-  }, [cart.length, showCart, isEdit, originalCartLength]);
+  }, [cart.length, showCart, isEdit, originalCartLength, picker.visible]);
 
   // ─── Cart operations ───────────────────────────────────────────────────────
 
+  // For items with variants/addons, always open the picker.
+  // For plain items (no variants, no addons), add directly.
   const addToCart = (item: MenuItem) => {
-    setCart(prev => [
-      ...prev,
-      {
-        slotId: uid(),
-        menuItemId: item.id,
-        menuItemName: item.name,
-        price: item.price,
-        quantity: 1,
-        note: '',
-      },
-    ]);
+    if (item.variants.length > 0 || item.addons.length > 0) {
+      openPicker(item);
+    } else {
+      setCart(prev => [
+        ...prev,
+        {
+          slotId: uid(),
+          menuItemId: item.id,
+          menuItemName: item.name,
+          price: item.price,
+          quantity: 1,
+          note: '',
+          variantId: null,
+          variantName: null,
+          variantPrice: null,
+          selectedAddons: [],
+        },
+      ]);
+    }
   };
 
+  // Removes the last added slot for an item (used by the inline − button on menu cards)
   const removeLastSlotForItem = (itemId: string) => {
     setCart(prev => {
       const lastIdx = [...prev].map(e => e.menuItemId).lastIndexOf(itemId);
@@ -213,16 +333,16 @@ export default function OrderScreen() {
     setCart(prev => prev.filter(e => e.slotId !== slotId));
 
   const changeQty = (slotId: string, delta: number) => {
-    setCart(prev => {
-      return prev
+    setCart(prev =>
+      prev
         .map(e => {
           if (e.slotId !== slotId) return e;
           const q = e.quantity + delta;
           if (q < 1) return null;
           return { ...e, quantity: q };
         })
-        .filter(Boolean) as CartEntry[];
-    });
+        .filter(Boolean) as CartEntry[]
+    );
   };
 
   const saveNote = () => {
@@ -252,44 +372,36 @@ export default function OrderScreen() {
     try {
       const orderId = existingOrderIdRef.current;
 
+      // Map CartEntry → OrderItem for the API
+      const toOrderItem = (e: CartEntry): OrderItem => ({
+        menuItemId: e.menuItemId,
+        menuItemName: e.menuItemName,
+        price: e.price,
+        quantity: e.quantity,
+        note: e.note,
+        variantId: e.variantId,
+        variantName: e.variantName,
+        variantPrice: e.variantPrice,
+        addonIds: e.selectedAddons.map(a => a.id),
+        addonNames: e.selectedAddons.map(a => a.name),
+        addonTotal: e.selectedAddons.reduce((s, a) => s + a.price, 0),
+      });
+
       if (isEdit && orderId) {
-        // Edit mode: figure out which cart entries are new vs already in the order.
-        // Entries with an orderItemId already exist on the backend.
-        // Entries without one were just added by the waiter in this session.
         const newEntries = cart.filter(e => !e.orderItemId);
         const existingEntries = cart.filter(e => e.orderItemId);
 
-        // Add brand-new items to the open order
         if (newEntries.length > 0) {
-          await addItemsToOrder(
-            orderId,
-            newEntries.map(e => ({
-              menuItemId: e.menuItemId,
-              menuItemName: e.menuItemName,
-              price: e.price,
-              quantity: e.quantity,
-              note: e.note,
-            })),
-          );
+          await addItemsToOrder(orderId, newEntries.map(toOrderItem));
         }
 
-        // Update quantities for items already in the order
-        // (only send if quantity differs from what was loaded — we track originals via orderItemId)
         for (const entry of existingEntries) {
           if (entry.orderItemId) {
             await updateItemQuantity(orderId, entry.orderItemId, entry.quantity);
           }
         }
       } else {
-        // New order: POST /orders with tableId + items
-        const items: OrderItem[] = cart.map(e => ({
-          menuItemId: e.menuItemId,
-          menuItemName: e.menuItemName,
-          price: e.price,
-          quantity: e.quantity,
-          note: e.note,
-        }));
-        await submitOrder(tableId, items);
+        await submitOrder(tableId, cart.map(toOrderItem));
       }
 
       showAlert(
@@ -384,7 +496,6 @@ export default function OrderScreen() {
               onPress={() => setActiveCategory(cat.id)}
               activeOpacity={0.75}
             >
-              {/* icon is optional — API doesn't return one, show a fallback */}
               {cat.icon ? (
                 <Text style={styles.catIcon}>{cat.icon}</Text>
               ) : (
@@ -419,6 +530,8 @@ export default function OrderScreen() {
         }
         renderItem={({ item }) => {
           const count = cartCountForItem(item.id);
+          const hasVariants = item.variants.length > 0;
+          const hasAddons = item.addons.length > 0;
           return (
             <View
               style={[
@@ -428,7 +541,6 @@ export default function OrderScreen() {
             >
               <View style={styles.menuCardLeft}>
                 <View style={styles.menuCardTop}>
-                  {/* Veg/Non-veg badge — only shown if isVeg is explicitly set */}
                   {item.isVeg !== undefined && (
                     <View
                       style={[
@@ -444,23 +556,37 @@ export default function OrderScreen() {
                       />
                     </View>
                   )}
-                  {/* tags are optional — API doesn't return them */}
                   {(item.tags ?? []).slice(0, 2).map(tag => (
                     <View key={tag} style={styles.tagChip}>
                       <Text style={styles.tagText}>{tag}</Text>
                     </View>
                   ))}
+                  {/* Variant / addon hint badges */}
+                  {hasVariants && (
+                    <View style={styles.variantHintChip}>
+                      <Text style={styles.variantHintText}>Variants</Text>
+                    </View>
+                  )}
+                  {hasAddons && (
+                    <View style={styles.addonHintChip}>
+                      <Text style={styles.addonHintText}>Add-ons</Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={styles.menuItemName} numberOfLines={1}>
                   {item.name}
                 </Text>
-                {/* description is optional — API doesn't return it */}
                 {item.description ? (
                   <Text style={styles.menuItemDesc} numberOfLines={2}>
                     {item.description}
                   </Text>
                 ) : null}
-                <Text style={styles.menuItemPrice}>{formatPrice(item.price)}</Text>
+                {/* Show base price; if has variants, label it as "from" */}
+                <Text style={styles.menuItemPrice}>
+                  {hasVariants
+                    ? `from ${formatPrice(Math.min(...item.variants.map(v => v.price)))}`
+                    : formatPrice(item.price)}
+                </Text>
               </View>
 
               <View style={styles.menuCardRight}>
@@ -474,7 +600,9 @@ export default function OrderScreen() {
                     onPress={() => addToCart(item)}
                     activeOpacity={0.75}
                   >
-                    <Text style={styles.addBtnText}>+ Add</Text>
+                    <Text style={styles.addBtnText}>
+                      {hasVariants || hasAddons ? '+ Choose' : '+ Add'}
+                    </Text>
                   </TouchableOpacity>
                 ) : (
                   <View style={styles.inlineStepper}>
@@ -542,6 +670,140 @@ export default function OrderScreen() {
         </View>
       )}
 
+      {/* ══════════════════════════════════════════════════════════════════════
+          ── Variant / Addon Picker Modal ──
+          Opens when user taps Add on an item that has variants or addons.
+      ══════════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={picker.visible}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        onRequestClose={closePicker}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.pickerModal,
+              { paddingBottom: insets.bottom + clampDp(8, 4, 16) },
+              { maxHeight: SCREEN_HEIGHT * 0.85 },
+            ]}
+          >
+            <View style={styles.cartModalHandle} />
+
+            {/* Picker header */}
+            <View style={styles.cartModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cartModalTitle} numberOfLines={1}>
+                  {picker.item?.name}
+                </Text>
+                {picker.item && (
+                  <Text style={styles.pickerSubtitle}>
+                    {picker.item.variants.length > 0
+                      ? 'Choose a variant, then any add-ons'
+                      : 'Choose your add-ons'}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                onPress={closePicker}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={styles.cartModalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+
+              {/* ── Variants section (mandatory if present) ── */}
+              {picker.item && picker.item.variants.length > 0 && (
+                <View style={styles.pickerSection}>
+                  <View style={styles.pickerSectionHeader}>
+                    <Text style={styles.pickerSectionTitle}>Variants</Text>
+                    <View style={styles.requiredChip}>
+                      <Text style={styles.requiredChipText}>Required</Text>
+                    </View>
+                  </View>
+                  {picker.item.variants.map(variant => {
+                    const selected = picker.selectedVariantId === variant.id;
+                    return (
+                      <TouchableOpacity
+                        key={variant.id}
+                        style={[styles.pickerRow, selected && styles.pickerRowSelected]}
+                        onPress={() =>
+                          setPicker(prev => ({ ...prev, selectedVariantId: variant.id }))
+                        }
+                        activeOpacity={0.75}
+                      >
+                        <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
+                          {selected && <View style={styles.radioInner} />}
+                        </View>
+                        <Text style={[styles.pickerRowName, selected && styles.pickerRowNameSelected]}>
+                          {variant.name}
+                        </Text>
+                        <Text style={[styles.pickerRowPrice, selected && styles.pickerRowPriceSelected]}>
+                          {formatPrice(variant.price)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* ── Addons section (optional) ── */}
+              {picker.item && picker.item.addons.length > 0 && (
+                <View style={styles.pickerSection}>
+                  <View style={styles.pickerSectionHeader}>
+                    <Text style={styles.pickerSectionTitle}>Add-ons</Text>
+                    <View style={styles.optionalChip}>
+                      <Text style={styles.optionalChipText}>Optional</Text>
+                    </View>
+                  </View>
+                  {picker.item.addons.map(addon => {
+                    const selected = picker.selectedAddonIds.has(addon.id);
+                    return (
+                      <TouchableOpacity
+                        key={addon.id}
+                        style={[styles.pickerRow, selected && styles.pickerRowSelected]}
+                        onPress={() => toggleAddon(addon.id)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={[styles.checkboxOuter, selected && styles.checkboxOuterSelected]}>
+                          {selected && <Text style={styles.checkboxTick}>✓</Text>}
+                        </View>
+                        <Text style={[styles.pickerRowName, selected && styles.pickerRowNameSelected]}>
+                          {addon.name}
+                        </Text>
+                        <Text style={[styles.pickerRowPrice, selected && styles.pickerRowPriceSelected]}>
+                          +{formatPrice(addon.price)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Spacer so content clears the confirm button */}
+              <View style={{ height: clampDp(80, 64, 100) }} />
+            </ScrollView>
+
+            {/* Confirm button */}
+            <TouchableOpacity
+              style={styles.pickerConfirmBtn}
+              onPress={confirmPicker}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.pickerConfirmText}>
+                Add to Order
+              </Text>
+              <Text style={styles.pickerConfirmPrice}>
+                {formatPrice(pickerTotal)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* ── Cart Modal ── */}
       <Modal
         visible={showCart}
@@ -586,69 +848,80 @@ export default function OrderScreen() {
               {cart.length === 0 ? (
                 <Text style={styles.cartEmptyText}>No items added yet.</Text>
               ) : (
-                cart.map(entry => (
-                  <View key={entry.slotId} style={styles.cartEntry}>
-                    <View style={styles.cartEntryTop}>
-                      <Text style={styles.cartEntryName} numberOfLines={2}>
-                        {entry.menuItemName}
-                      </Text>
-                      <Text style={styles.cartEntryPrice}>
-                        {formatPrice(entry.price * entry.quantity)}
-                      </Text>
-                    </View>
-                    <View style={styles.cartEntryActions}>
-                      <View style={styles.qtyRow}>
+                cart.map(entry => {
+                  const subtitle = entrySubtitle(entry);
+                  const unitPrice = entryUnitPrice(entry);
+                  return (
+                    <View key={entry.slotId} style={styles.cartEntry}>
+                      <View style={styles.cartEntryTop}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cartEntryName} numberOfLines={2}>
+                            {entry.menuItemName}
+                          </Text>
+                          {subtitle ? (
+                            <Text style={styles.cartEntrySubtitle} numberOfLines={2}>
+                              {subtitle}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.cartEntryPrice}>
+                          {formatPrice(unitPrice * entry.quantity)}
+                        </Text>
+                      </View>
+                      <View style={styles.cartEntryActions}>
+                        <View style={styles.qtyRow}>
+                          <TouchableOpacity
+                            style={styles.qtyBtn}
+                            onPress={() => changeQty(entry.slotId, -1)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.qtyBtnText}>−</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.qtyValue}>{entry.quantity}</Text>
+                          <TouchableOpacity
+                            style={styles.qtyBtn}
+                            onPress={() => changeQty(entry.slotId, 1)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.qtyBtnText}>+</Text>
+                          </TouchableOpacity>
+                        </View>
                         <TouchableOpacity
-                          style={styles.qtyBtn}
-                          onPress={() => changeQty(entry.slotId, -1)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={styles.noteBtn}
+                          onPress={() =>
+                            setNoteModal({
+                              visible: true,
+                              slotId: entry.slotId,
+                              note: entry.note,
+                              itemName: entry.menuItemName,
+                            })
+                          }
                         >
-                          <Text style={styles.qtyBtnText}>−</Text>
+                          <Text style={styles.noteBtnText} numberOfLines={1}>
+                            {entry.note
+                              ? '📝 ' +
+                                entry.note.slice(0, 20) +
+                                (entry.note.length > 20 ? '…' : '')
+                              : '+ Add note'}
+                          </Text>
                         </TouchableOpacity>
-                        <Text style={styles.qtyValue}>{entry.quantity}</Text>
                         <TouchableOpacity
-                          style={styles.qtyBtn}
-                          onPress={() => changeQty(entry.slotId, 1)}
+                          style={styles.removeBtn}
+                          onPress={() => removeSlot(entry.slotId)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Text style={styles.qtyBtnText}>+</Text>
+                          <Text style={styles.removeBtnText}>🗑</Text>
                         </TouchableOpacity>
                       </View>
-                      <TouchableOpacity
-                        style={styles.noteBtn}
-                        onPress={() =>
-                          setNoteModal({
-                            visible: true,
-                            slotId: entry.slotId,
-                            note: entry.note,
-                            itemName: entry.menuItemName,
-                          })
-                        }
-                      >
-                        <Text style={styles.noteBtnText} numberOfLines={1}>
-                          {entry.note
-                            ? '📝 ' +
-                              entry.note.slice(0, 20) +
-                              (entry.note.length > 20 ? '…' : '')
-                            : '+ Add note'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.removeBtn}
-                        onPress={() => removeSlot(entry.slotId)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Text style={styles.removeBtnText}>🗑</Text>
-                      </TouchableOpacity>
+                      {entry.note ? (
+                        <Text style={styles.cartEntryNote}>"{entry.note}"</Text>
+                      ) : null}
                     </View>
-                    {entry.note ? (
-                      <Text style={styles.cartEntryNote}>"{entry.note}"</Text>
-                    ) : null}
-                  </View>
-                ))
+                  );
+                })
               )}
 
-              {/* Kitchen instructions — UI-only, not sent to backend */}
+              {/* Kitchen instructions */}
               <View style={styles.specialBox}>
                 <Text style={styles.specialLabel}>⚠️  Kitchen Instructions</Text>
                 <TextInput
@@ -1021,6 +1294,33 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '700',
   },
+  // Hint badges shown on menu cards
+  variantHintChip: {
+    backgroundColor: '#1a2030',
+    paddingHorizontal: clampDp(6, 5, 8),
+    paddingVertical: clampDp(1, 1, 2),
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#334',
+  },
+  variantHintText: {
+    fontSize: clampSp(9, 8, 11),
+    color: '#8899cc',
+    fontWeight: '700',
+  },
+  addonHintChip: {
+    backgroundColor: '#201a30',
+    paddingHorizontal: clampDp(6, 5, 8),
+    paddingVertical: clampDp(1, 1, 2),
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#433',
+  },
+  addonHintText: {
+    fontSize: clampSp(9, 8, 11),
+    color: '#cc88aa',
+    fontWeight: '700',
+  },
   menuItemName: {
     fontSize: clampSp(14, 12, 17),
     fontWeight: '700',
@@ -1041,7 +1341,7 @@ const styles = StyleSheet.create({
   addBtn: {
     backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.md,
-    paddingHorizontal: clampDp(16, 12, 22),
+    paddingHorizontal: clampDp(14, 10, 20),
     paddingVertical: clampDp(10, 8, 14),
     borderWidth: 1.5,
     borderColor: Colors.surfaceBorder,
@@ -1169,7 +1469,7 @@ const styles = StyleSheet.create({
     marginBottom: clampDp(4, 2, 8),
   },
 
-  // ── Cart Modal ────────────────────────────────────────────────────────────
+  // ── Shared Modal Base ─────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -1214,6 +1514,163 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     padding: clampDp(4, 3, 6),
   },
+
+  // ── Variant / Addon Picker Modal ──────────────────────────────────────────
+  pickerModal: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: clampDp(24, 18, 32),
+    borderTopRightRadius: clampDp(24, 18, 32),
+    borderTopWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  pickerSubtitle: {
+    fontSize: clampSp(11, 10, 13),
+    color: Colors.textSecondary,
+    marginTop: 3,
+  },
+  pickerSection: {
+    paddingHorizontal: clampDp(14, 10, 20),
+    paddingTop: clampDp(16, 12, 22),
+  },
+  pickerSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: clampDp(8, 6, 12),
+    marginBottom: clampDp(10, 8, 14),
+  },
+  pickerSectionTitle: {
+    fontSize: clampSp(13, 12, 15),
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  requiredChip: {
+    backgroundColor: '#2a1a1a',
+    paddingHorizontal: clampDp(8, 6, 10),
+    paddingVertical: clampDp(2, 1, 4),
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.error + '60',
+  },
+  requiredChipText: {
+    fontSize: clampSp(10, 9, 12),
+    color: Colors.error,
+    fontWeight: '700',
+  },
+  optionalChip: {
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: clampDp(8, 6, 10),
+    paddingVertical: clampDp(2, 1, 4),
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  optionalChipText: {
+    fontSize: clampSp(10, 9, 12),
+    color: Colors.textMuted,
+    fontWeight: '700',
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: clampDp(12, 10, 16),
+    paddingVertical: clampDp(12, 10, 16),
+    paddingHorizontal: clampDp(12, 10, 16),
+    borderRadius: Radius.md,
+    marginBottom: clampDp(6, 4, 10),
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1.5,
+    borderColor: Colors.surfaceBorder,
+  },
+  pickerRowSelected: {
+    backgroundColor: Colors.primaryGlow,
+    borderColor: Colors.primary,
+  },
+  pickerRowName: {
+    flex: 1,
+    fontSize: clampSp(14, 12, 16),
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  pickerRowNameSelected: {
+    color: Colors.textPrimary,
+    fontWeight: '700',
+  },
+  pickerRowPrice: {
+    fontSize: clampSp(14, 12, 16),
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  pickerRowPriceSelected: {
+    color: Colors.primary,
+  },
+  // Radio button (for variants — single select)
+  radioOuter: {
+    width: clampDp(20, 18, 24),
+    height: clampDp(20, 18, 24),
+    borderRadius: clampDp(10, 9, 12),
+    borderWidth: 2,
+    borderColor: Colors.surfaceBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterSelected: {
+    borderColor: Colors.primary,
+  },
+  radioInner: {
+    width: clampDp(10, 9, 12),
+    height: clampDp(10, 9, 12),
+    borderRadius: clampDp(5, 4, 6),
+    backgroundColor: Colors.primary,
+  },
+  // Checkbox (for addons — multi select)
+  checkboxOuter: {
+    width: clampDp(20, 18, 24),
+    height: clampDp(20, 18, 24),
+    borderRadius: clampDp(4, 3, 6),
+    borderWidth: 2,
+    borderColor: Colors.surfaceBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceElevated,
+  },
+  checkboxOuterSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  checkboxTick: {
+    fontSize: clampSp(12, 10, 14),
+    color: Colors.white,
+    fontWeight: '800',
+    lineHeight: clampSp(14, 12, 16),
+  },
+  // Confirm button at bottom of picker
+  pickerConfirmBtn: {
+    position: 'absolute',
+    bottom: clampDp(16, 12, 24),
+    left: clampDp(14, 10, 20),
+    right: clampDp(14, 10, 20),
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    paddingVertical: clampDp(16, 14, 20),
+    paddingHorizontal: clampDp(20, 16, 28),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerConfirmText: {
+    fontSize: clampSp(15, 13, 17),
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  pickerConfirmPrice: {
+    fontSize: clampSp(15, 13, 17),
+    fontWeight: '800',
+    color: Colors.white,
+  },
+
+  // ── Cart entries ──────────────────────────────────────────────────────────
   cartEmptyText: {
     textAlign: 'center',
     color: Colors.textMuted,
@@ -1236,7 +1693,12 @@ const styles = StyleSheet.create({
     fontSize: clampSp(14, 12, 16),
     fontWeight: '600',
     color: Colors.textPrimary,
-    flex: 1,
+  },
+  cartEntrySubtitle: {
+    fontSize: clampSp(11, 10, 13),
+    color: Colors.textSecondary,
+    marginTop: clampDp(2, 1, 4),
+    fontStyle: 'italic',
   },
   cartEntryPrice: {
     fontSize: clampSp(14, 12, 16),

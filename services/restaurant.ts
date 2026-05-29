@@ -85,34 +85,61 @@ type ApiResponse<T> = {
 };
 
 // ─── Menu Types ───────────────────────────────────────────────────────────────
-// Real API: GET /menu returns categories with embedded dishes
-// Fields like isVeg, description, tags, icon are NOT in the backend —
-// they're optional here so the UI degrades gracefully when absent.
+
+export type Variant = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+export type Addon = {
+  id: string;
+  name: string;
+  price: number;
+};
 
 export type MenuCategory = {
   id: string;
   name: string;
-  icon?: string;       // not in API — UI falls back to a default emoji
+  icon?: string;
 };
 
 export type MenuItem = {
-  id: string;          // dish UUID from backend
+  id: string;
   categoryId: string;
   name: string;
-  price: number;
-  isAvailable: boolean; // mapped from `available` in API response
-  description?: string; // not in API
-  isVeg?: boolean;      // not in API
-  tags?: string[];      // not in API
+  price: number;           // base price (used when no variant is selected)
+  isAvailable: boolean;
+  variants: Variant[];     // if non-empty, user MUST pick one
+  addons: Addon[];         // always optional, user picks zero or more
+  description?: string;
+  isVeg?: boolean;
+  tags?: string[];
 };
 
 // Raw shapes returned by GET /menu
+type ApiAddon = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+type ApiVariant = {
+  id: string;
+  name: string;
+  price: number;
+};
+
 type ApiDish = {
   id: string;
   name: string;
   price: number;
   available: boolean;
   recipe?: string;
+  categoryId: string;
+  categoryName: string;
+  variants: ApiVariant[];
+  addons: ApiAddon[];
 };
 
 type ApiMenuCategory = {
@@ -129,11 +156,19 @@ export type OrderItem = {
   price: number;
   quantity: number;
   note: string;
+  // Variant fields — null when the item has no variants
+  variantId: string | null;
+  variantName: string | null;
+  variantPrice: number | null;
+  // Addon fields — empty arrays when no addons selected
+  addonIds: string[];
+  addonNames: string[];
+  addonTotal: number;
 };
 
 // Raw order item as returned by GET /orders/table/:tableId
 type ApiOrderItem = {
-  id: string;          // orderItemId — needed for update/remove calls
+  id: string;
   menuItemId: string;
   dishName: string;
   price: number;
@@ -197,9 +232,6 @@ function parseFloors(apiFloors: ApiFloor[]): { floors: Floor[]; tables: Table[] 
   return { floors, tables: allTables };
 }
 
-// Maps the flat ApiOrder from the backend into the Order type the UI expects.
-// The backend doesn't store specialInstructions or per-item notes — those are
-// UI-only concepts, so they default to empty strings.
 function parseOrder(apiOrder: ApiOrder): Order {
   return {
     id: apiOrder.id,
@@ -209,11 +241,18 @@ function parseOrder(apiOrder: ApiOrder): Order {
       menuItemName: item.dishName,
       price: item.price,
       quantity: item.quantity,
-      note: '',                   // backend has no per-item note
-      orderItemId: item.id,       // kept for update/remove calls
+      note: '',
+      orderItemId: item.id,
+      // Variant/addon info is not stored in existing order items from the backend
+      variantId: null,
+      variantName: null,
+      variantPrice: null,
+      addonIds: [],
+      addonNames: [],
+      addonTotal: 0,
     })),
     status: apiOrder.status,
-    specialInstructions: '',      // backend has no specialInstructions
+    specialInstructions: '',
     createdAt: apiOrder.createdAt,
     updatedAt: apiOrder.updatedAt,
     totalAmount: apiOrder.total,
@@ -246,14 +285,13 @@ export const fetchTables = async (): Promise<Table[]> => {
 };
 
 // MENU
-// GET /menu returns categories with embedded dishes.
-// We split them into two flat lists so [tableId].tsx can work with them as before.
+// GET /menu returns categories with embedded dishes including variants and addons.
+// We make a single request and split into two flat lists for the UI.
 export const fetchMenuCategories = async (): Promise<MenuCategory[]> => {
   const res = await api.get<ApiResponse<ApiMenuCategory[]>>('/menu');
   return res.data.data.map(cat => ({
     id: cat.id,
     name: cat.name,
-    // Backend has no icon — UI should handle icon being undefined
   }));
 };
 
@@ -268,7 +306,16 @@ export const fetchMenuItems = async (): Promise<MenuItem[]> => {
         name: dish.name,
         price: dish.price,
         isAvailable: dish.available,
-        // description, isVeg, tags are not in the API — left undefined
+        variants: (dish.variants ?? []).map(v => ({
+          id: v.id,
+          name: v.name,
+          price: v.price,
+        })),
+        addons: (dish.addons ?? []).map(a => ({
+          id: a.id,
+          name: a.name,
+          price: a.price,
+        })),
       });
     }
   }
@@ -285,8 +332,6 @@ export const fetchOrderByTable = async (tableId: string): Promise<Order | null> 
 };
 
 // Places a NEW order on an empty table.
-// Backend only needs tableId + items (menuItemId + quantity).
-// specialInstructions, waiterId, waiterName are UI-only — not sent.
 export const submitOrder = async (
   tableId: string,
   items: OrderItem[],
@@ -296,6 +341,12 @@ export const submitOrder = async (
     items: items.map(i => ({
       menuItemId: i.menuItemId,
       quantity: i.quantity,
+      variantId: i.variantId,
+      variantName: i.variantName,
+      variantPrice: i.variantPrice,
+      addonIds: i.addonIds,
+      addonNames: i.addonNames,
+      addonTotal: i.addonTotal,
     })),
   });
   if (!res.data.success) throw new Error(res.data.message ?? 'Failed to place order');
@@ -303,7 +354,6 @@ export const submitOrder = async (
 };
 
 // Adds NEW items to an existing open order.
-// Use this when the waiter is in edit mode and adds items not previously in the order.
 export const addItemsToOrder = async (
   orderId: string,
   items: OrderItem[],
@@ -312,6 +362,12 @@ export const addItemsToOrder = async (
     items: items.map(i => ({
       menuItemId: i.menuItemId,
       quantity: i.quantity,
+      variantId: i.variantId,
+      variantName: i.variantName,
+      variantPrice: i.variantPrice,
+      addonIds: i.addonIds,
+      addonNames: i.addonNames,
+      addonTotal: i.addonTotal,
     })),
   });
   if (!res.data.success) throw new Error(res.data.message ?? 'Failed to add items');
