@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/constants/theme';
-import { fetchFloors, clearToken, Floor, Table, TableStatus } from '@/services/restaurant';
+import { fetchFloors, Floor, Table, TableStatus } from '@/services/tables';
+import { clearToken } from '@/services/auth';
 // delete the const styles block, add this import
 import { styles } from './_styles';
 

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/constants/theme';
-import { loginWaiter } from '@/services/restaurant';
+import { loginWaiter } from '@/services/auth';
 import CustomAlert, { AlertButton } from '@/components/Customalert';
 
 export default function LoginScreen() {

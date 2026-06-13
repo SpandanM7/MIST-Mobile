@@ -1,17 +1,7 @@
 import { Colors, Radius } from '@/constants/theme';
-import {
-  fetchMenuCategories,
-  fetchMenuItems,
-  fetchOrderByTable,
-  MenuCategory,
-  MenuItem,
-  Variant,
-  Addon,
-  OrderItem,
-  submitOrder,
-  addItemsToOrder,
-  updateItemQuantity,
-} from '@/services/restaurant';
+
+import { fetchMenuCategories, fetchMenuItems, MenuCategory, MenuItem, Variant, Addon } from '@/services/menu';
+import { fetchOrderByTable, submitOrder, addItemsToOrder, updateItemQuantity, OrderItem } from '@/services/orders';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
