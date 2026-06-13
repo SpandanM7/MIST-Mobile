@@ -24,7 +24,7 @@ type ApiOrderItem = {
   id: string;
   menuItemId: string;
   dishName: string;
-  price: number;
+  priceAtOrder: number;
   quantity: number;
   dishStatus: 'ordered' | 'preparing' | 'served';
 };
@@ -57,7 +57,7 @@ function parseOrder(apiOrder: ApiOrder): Order {
     items: apiOrder.items.map(item => ({
       menuItemId: item.menuItemId,
       menuItemName: item.dishName,
-      price: item.price,
+      price: item.priceAtOrder,
       quantity: item.quantity,
       note: '',
       orderItemId: item.id,
@@ -150,5 +150,43 @@ export const removeItemFromOrder = async (
 export const requestBill = async (tableId: string): Promise<{ success: boolean }> => {
   const res = await api.post<ApiResponse<null>>(`/orders/table/${tableId}/request-bill`);
   if (!res.data.success) throw new Error(res.data.message ?? 'Failed to request bill');
+  return { success: true };
+};
+
+
+// ─── Takeout Order Types ──────────────────────────────────────────────────────
+
+export type TakeoutOrderItem = {
+  dishName: string;
+  category: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  addonNames: string[];
+  addonPrices: number[];
+};
+
+export type TakeoutOrderPayload = {
+  type: 'TAKEAWAY';
+  phoneNumber: string;
+  subtotal: number;
+  discountType: '%' | '₹';
+  discountValue: number;
+  discountAmount: number;
+  cgstPercent: number;
+  sgstPercent: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  grandTotal: number;
+  paymentMethod: string;
+  items: TakeoutOrderItem[];
+};
+
+// Places a new TAKEAWAY order (no table involved).
+export const submitTakeoutOrder = async (
+  payload: TakeoutOrderPayload,
+): Promise<{ success: boolean }> => {
+  const res = await api.post<ApiResponse<any>>('/takeaway/orders', payload);
+  if (!res.data.success) throw new Error(res.data.message ?? 'Failed to place takeout order');
   return { success: true };
 };

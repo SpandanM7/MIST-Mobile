@@ -314,6 +314,14 @@ export default function TablesScreen() {
           );
         }}
       />
+      {/* Takeout FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/order/takeout' as any)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.fabIcon}>🥡</Text>
+      </TouchableOpacity>
     </View>
   );
 }
