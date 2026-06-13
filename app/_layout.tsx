@@ -18,7 +18,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="tables" options={{ headerShown: false }} />
+        <Stack.Screen name="tables/index" options={{ headerShown: false }} />
         <Stack.Screen
           name="order/[tableId]"
           options={{
