@@ -19,16 +19,15 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="tables/index" options={{ headerShown: false }} />
+        <Stack.Screen name="online-orders" options={{ headerShown: false }} />
+        <Stack.Screen name="order-history" options={{ headerShown: false }} />
         <Stack.Screen
           name="order/takeout"
           options={{ headerShown: false, animation: 'slide_from_bottom' }}
-/>
+        />
         <Stack.Screen
           name="order/[tableId]"
-          options={{
-            headerShown: false,
-            animation: 'slide_from_bottom',
-          }}
+          options={{ headerShown: false, animation: 'slide_from_bottom' }}
         />
       </Stack>
     </SafeAreaProvider>

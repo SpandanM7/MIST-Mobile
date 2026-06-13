@@ -253,6 +253,29 @@ export const styles = StyleSheet.create({
     bottom: 7,
     right: 8,
   },
+  // ─── Add these entries to the existing StyleSheet in tables/_styles.ts ────────
+// Paste inside the StyleSheet.create({}) block, alongside the existing `header` styles.
+
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  hamburger: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    gap: 5,
+  },
+  bar: {
+    height: 2,
+    width: 22,
+    backgroundColor: Colors.textPrimary,
+    borderRadius: 2,
+  },
+  barMid: {
+    width: 16,
+  },
   fab: {
     position: 'absolute',
     bottom: 24,

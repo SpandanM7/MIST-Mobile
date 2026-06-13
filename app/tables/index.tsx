@@ -13,15 +13,15 @@ import { router } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { fetchFloors, Floor, Table, TableStatus } from '@/services/tables';
 import { clearToken } from '@/services/auth';
-// delete the const styles block, add this import
 import { styles } from './_styles';
+import DrawerMenu from '@/components/DrawerMenu';
 
 // ─── Status config — covers all 3 backend statuses ───────────────────────────
 
 const STATUS_CONFIG: Record<TableStatus, { label: string; color: string; bg: string; dot: string }> = {
-  empty:           { label: 'Empty',         color: Colors.statusEmptyText,     bg: Colors.statusEmpty,     dot: '#444' },
-  occupied:        { label: 'Occupied',      color: Colors.statusOccupiedText,  bg: Colors.statusOccupied,  dot: Colors.primary },
-  bill_requested:  { label: 'Bill Requested',color: Colors.statusDeliveredText, bg: Colors.statusDelivered, dot: '#d97a4a' },
+  empty:           { label: 'Empty',          color: Colors.statusEmptyText,     bg: Colors.statusEmpty,     dot: '#444' },
+  occupied:        { label: 'Occupied',       color: Colors.statusOccupiedText,  bg: Colors.statusOccupied,  dot: Colors.primary },
+  bill_requested:  { label: 'Bill Requested', color: Colors.statusDeliveredText, bg: Colors.statusDelivered, dot: '#d97a4a' },
 };
 
 // ─── Filter state shape ───────────────────────────────────────────────────────
@@ -36,8 +36,8 @@ export default function TablesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>({ type: 'all' });
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // ─── Load ─────────────────────────────────────────────────────────────────
 
@@ -237,10 +237,25 @@ export default function TablesScreen() {
     <View style={styles.container}>
       {/* Fixed header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Floor View</Text>
-          <Text style={styles.headerSubtitle}>{allTables.length} tables total</Text>
+        <View style={styles.headerLeft}>
+          {/* Hamburger */}
+          <TouchableOpacity
+            style={styles.hamburger}
+            onPress={() => setDrawerOpen(true)}
+            activeOpacity={0.75}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.bar} />
+            <View style={[styles.bar, styles.barMid]} />
+            <View style={styles.bar} />
+          </TouchableOpacity>
+
+          <View>
+            <Text style={styles.headerTitle}>Floor View</Text>
+            <Text style={styles.headerSubtitle}>{allTables.length} tables total</Text>
+          </View>
         </View>
+
         <View style={styles.headerRight}>
           <View style={styles.liveIndicator}>
             <View style={styles.liveDot} />
@@ -314,6 +329,7 @@ export default function TablesScreen() {
           );
         }}
       />
+
       {/* Takeout FAB */}
       <TouchableOpacity
         style={styles.fab}
@@ -322,6 +338,13 @@ export default function TablesScreen() {
       >
         <Text style={styles.fabIcon}>🥡</Text>
       </TouchableOpacity>
+
+      {/* Drawer */}
+      <DrawerMenu
+        visible={drawerOpen}
+        activeRoute="home"
+        onClose={() => setDrawerOpen(false)}
+      />
     </View>
   );
 }
