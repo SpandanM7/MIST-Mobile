@@ -4,13 +4,13 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Colors, Spacing, Radius } from '@/constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors } from '@/constants/theme';
 import { fetchFloors, Floor, Table, TableStatus } from '@/services/tables';
 import { clearToken } from '@/services/auth';
 import { styles } from './_styles';
@@ -32,6 +32,8 @@ type ActiveFilter =
   | { type: 'section'; floorId: string; sectionId: string };
 
 export default function TablesScreen() {
+  const insets = useSafeAreaInsets();
+
   const [floors, setFloors] = useState<Floor[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -233,6 +235,9 @@ export default function TablesScreen() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
+  // FAB sits above the Android 3-button nav bar
+  const fabBottom = insets.bottom + 20;
+
   return (
     <View style={styles.container}>
       {/* Fixed header */}
@@ -289,7 +294,8 @@ export default function TablesScreen() {
             <Text style={styles.emptyText}>No tables found</Text>
           </View>
         }
-        contentContainerStyle={styles.grid}
+        // Extra bottom padding so last row of cards never slides under the FAB
+        contentContainerStyle={[styles.grid, { paddingBottom: fabBottom + 72 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -330,9 +336,9 @@ export default function TablesScreen() {
         }}
       />
 
-      {/* Takeout FAB */}
+      {/* Takeout FAB — floats above Android nav bar */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: fabBottom }]}
         onPress={() => router.push('/order/takeout' as any)}
         activeOpacity={0.85}
       >

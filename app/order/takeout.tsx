@@ -310,6 +310,9 @@ export default function TakeoutScreen() {
 
   const totalQty = cart.reduce((s, e) => s + e.quantity, 0);
 
+  // Cart bar absorbs the Android 3-button nav bar height
+  const cartBarBottomPadding = insets.bottom + clampDp(14, 12, 18);
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -319,9 +322,13 @@ export default function TakeoutScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Takeout Order</Text>
-          <Text style={styles.headerSubtitle}>New takeaway</Text>
+          <Text style={styles.headerSubtitle}>
+            {cart.length > 0
+              ? `${totalQty} item${totalQty > 1 ? 's' : ''} in cart`
+              : 'New takeaway'}
+          </Text>
         </View>
-        <View style={{ width: clampDp(36, 32, 44) }} />
+        <View style={{ width: clampDp(38, 34, 46) }} />
       </View>
 
       {loading ? (
@@ -331,37 +338,42 @@ export default function TakeoutScreen() {
         </View>
       ) : (
         <>
-          {/* Category tabs */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoryBar}
-            contentContainerStyle={styles.categoryBarContent}
-          >
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[styles.categoryTab, activeCategory === cat.id && styles.categoryTabActive]}
-                onPress={() => setActiveCategory(cat.id)}
-                activeOpacity={0.75}
-              >
-                <Text
-                  style={[
-                    styles.categoryTabText,
-                    activeCategory === cat.id && styles.categoryTabTextActive,
-                  ]}
+          {/* ── Category tabs — View wrapper locks height; ScrollView scrolls sideways ── */}
+          <View style={styles.categoryBarWrapper}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoryBar}
+              contentContainerStyle={styles.categoryBarContent}
+              alwaysBounceHorizontal={false}
+            >
+              {categories.map(cat => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[styles.categoryTab, activeCategory === cat.id && styles.categoryTabActive]}
+                  onPress={() => setActiveCategory(cat.id)}
+                  activeOpacity={0.75}
                 >
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.categoryTabText,
+                      activeCategory === cat.id && styles.categoryTabTextActive,
+                    ]}
+                  >
+                    {cat.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
 
-          {/* Menu list */}
+          {/* ── Menu list ── */}
           <FlatList
             data={menuItems.filter(i => i.categoryId === activeCategory)}
             keyExtractor={item => item.id}
             contentContainerStyle={styles.menuList}
+            showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[styles.menuCard, !item.isAvailable && styles.menuCardDisabled]}
@@ -370,9 +382,11 @@ export default function TakeoutScreen() {
                 disabled={!item.isAvailable}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.menuItemName}>{item.name}</Text>
+                  <Text style={styles.menuItemName} numberOfLines={2}>{item.name}</Text>
                   <Text style={styles.menuItemPrice}>{formatPrice(item.price)}</Text>
-                  {!item.isAvailable && <Text style={styles.menuItemUnavailable}>Unavailable</Text>}
+                  {!item.isAvailable && (
+                    <Text style={styles.menuItemUnavailable}>Unavailable</Text>
+                  )}
                 </View>
                 {item.isAvailable && (
                   <View style={styles.addBtn}>
@@ -383,35 +397,58 @@ export default function TakeoutScreen() {
             )}
           />
 
-          {/* Bottom cart bar */}
+          {/* ── Bottom cart bar — paddingBottom absorbs Android nav bar ── */}
           <TouchableOpacity
-            style={[styles.cartBar, cart.length === 0 && styles.cartBarDisabled]}
+            style={[
+              styles.cartBar,
+              cart.length === 0 && styles.cartBarDisabled,
+              { paddingBottom: cartBarBottomPadding },
+            ]}
             onPress={() => cart.length > 0 && setShowCart(true)}
             activeOpacity={0.85}
             disabled={cart.length === 0}
           >
-            <Text style={styles.cartBarText}>
+            <Text
+              style={[
+                styles.cartBarText,
+                cart.length === 0 && styles.cartBarTextDisabled,
+              ]}
+            >
               {cart.length === 0
                 ? 'Cart is empty'
                 : `${totalQty} item${totalQty > 1 ? 's' : ''} · ${formatPrice(calcTotal(cart))}`}
             </Text>
-            {cart.length > 0 && <Text style={styles.cartBarArrow}>View Order →</Text>}
+            {cart.length > 0 && (
+              <Text style={styles.cartBarArrow}>View Order →</Text>
+            )}
           </TouchableOpacity>
         </>
       )}
 
       {/* ─── Cart / Billing Modal ──────────────────────────────────────────── */}
-      <Modal visible={showCart} animationType="slide" transparent onRequestClose={() => setShowCart(false)}>
+      <Modal
+        visible={showCart}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        onRequestClose={() => setShowCart(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.cartModal, { maxHeight: SCREEN_HEIGHT * 0.9 }]}>
+            {/* drag handle */}
+            <View style={styles.cartModalHandle} />
+
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Order Summary</Text>
-              <TouchableOpacity onPress={() => setShowCart(false)}>
+              <TouchableOpacity
+                onPress={() => setShowCart(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView>
+            <ScrollView showsVerticalScrollIndicator={false}>
               {cart.map(entry => (
                 <View key={entry.slotId} style={styles.cartEntry}>
                   <View style={styles.cartEntryTop}>
@@ -420,7 +457,9 @@ export default function TakeoutScreen() {
                       {entrySubtitle(entry) && (
                         <Text style={styles.cartEntrySubtitle}>{entrySubtitle(entry)}</Text>
                       )}
-                      {entry.note ? <Text style={styles.cartEntryNote}>📝 {entry.note}</Text> : null}
+                      {entry.note ? (
+                        <Text style={styles.cartEntryNote}>📝 {entry.note}</Text>
+                      ) : null}
                     </View>
                     <Text style={styles.cartEntryPrice}>
                       {formatPrice(entryUnitPrice(entry) * entry.quantity)}
@@ -428,18 +467,35 @@ export default function TakeoutScreen() {
                   </View>
                   <View style={styles.cartEntryActions}>
                     <View style={styles.qtyRow}>
-                      <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(entry.slotId, -1)}>
+                      <TouchableOpacity
+                        style={styles.qtyBtn}
+                        onPress={() => updateQty(entry.slotId, -1)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
                         <Text style={styles.qtyBtnText}>−</Text>
                       </TouchableOpacity>
                       <Text style={styles.qtyValue}>{entry.quantity}</Text>
-                      <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(entry.slotId, 1)}>
+                      <TouchableOpacity
+                        style={styles.qtyBtn}
+                        onPress={() => updateQty(entry.slotId, 1)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
                         <Text style={styles.qtyBtnText}>+</Text>
                       </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.noteBtn} onPress={() => openNoteModal(entry)}>
-                      <Text style={styles.noteBtnText}>{entry.note ? 'Edit Note' : '+ Note'}</Text>
+                    <TouchableOpacity
+                      style={styles.noteBtn}
+                      onPress={() => openNoteModal(entry)}
+                    >
+                      <Text style={styles.noteBtnText}>
+                        {entry.note ? 'Edit Note' : '+ Note'}
+                      </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.removeBtn} onPress={() => removeEntry(entry.slotId)}>
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => removeEntry(entry.slotId)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
                       <Text style={styles.removeBtnText}>🗑️</Text>
                     </TouchableOpacity>
                   </View>
@@ -594,19 +650,30 @@ export default function TakeoutScreen() {
       </Modal>
 
       {/* ─── Variant/Addon Picker Modal ────────────────────────────────────── */}
-      <Modal visible={picker.visible} animationType="slide" transparent onRequestClose={closePicker}>
+      <Modal
+        visible={picker.visible}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        onRequestClose={closePicker}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.pickerModal, { maxHeight: SCREEN_HEIGHT * 0.85 }]}>
             {picker.item && (
               <>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>{picker.item.name}</Text>
-                  <TouchableOpacity onPress={closePicker}>
+                  <Text style={styles.modalTitle} numberOfLines={1}>
+                    {picker.item.name}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={closePicker}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
                     <Text style={styles.modalClose}>✕</Text>
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView>
+                <ScrollView showsVerticalScrollIndicator={false}>
                   {picker.item.variants.length > 0 && (
                     <View style={styles.pickerSection}>
                       <Text style={styles.pickerSectionTitle}>Choose Variant</Text>
@@ -618,6 +685,7 @@ export default function TakeoutScreen() {
                             picker.selectedVariantId === v.id && styles.pickerOptionActive,
                           ]}
                           onPress={() => setPicker(prev => ({ ...prev, selectedVariantId: v.id }))}
+                          activeOpacity={0.75}
                         >
                           <Text style={styles.pickerOptionText}>{v.name}</Text>
                           <Text style={styles.pickerOptionPrice}>{formatPrice(v.price)}</Text>
@@ -637,16 +705,26 @@ export default function TakeoutScreen() {
                             picker.selectedAddonIds.has(a.id) && styles.pickerOptionActive,
                           ]}
                           onPress={() => toggleAddon(a.id)}
+                          activeOpacity={0.75}
                         >
                           <Text style={styles.pickerOptionText}>{a.name}</Text>
-                          <Text style={styles.pickerOptionPrice}>+{formatPrice(a.price)}</Text>
+                          <Text style={styles.pickerOptionPrice}>
+                            +{formatPrice(a.price)}
+                          </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
                   )}
                 </ScrollView>
 
-                <TouchableOpacity style={styles.pickerConfirmBtn} onPress={confirmPicker} activeOpacity={0.85}>
+                <TouchableOpacity
+                  style={[
+                    styles.pickerConfirmBtn,
+                    { paddingBottom: insets.bottom + clampDp(16, 14, 20) },
+                  ]}
+                  onPress={confirmPicker}
+                  activeOpacity={0.85}
+                >
                   <Text style={styles.pickerConfirmText}>Add to Order</Text>
                   <Text style={styles.pickerConfirmPrice}>{formatPrice(pickerTotal)}</Text>
                 </TouchableOpacity>
@@ -661,6 +739,7 @@ export default function TakeoutScreen() {
         visible={noteModal.visible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setNoteModal(prev => ({ ...prev, visible: false }))}
       >
         <View style={styles.noteOverlay}>
@@ -674,6 +753,7 @@ export default function TakeoutScreen() {
               value={noteModal.note}
               onChangeText={text => setNoteModal(prev => ({ ...prev, note: text }))}
               multiline
+              autoFocus
             />
             <View style={styles.noteModalBtns}>
               <TouchableOpacity

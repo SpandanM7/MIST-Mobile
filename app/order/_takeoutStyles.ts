@@ -20,23 +20,27 @@ export const styles = StyleSheet.create({
     gap: clampDp(10, 8, 14),
   },
   backBtn: {
-    width: clampDp(36, 32, 44),
-    height: clampDp(36, 32, 44),
+    width: clampDp(38, 34, 46),
+    height: clampDp(38, 34, 46),
     borderRadius: Radius.md,
     backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   backBtnText: {
-    fontSize: clampSp(24, 20, 28),
+    fontSize: clampSp(22, 20, 26),
     color: Colors.textPrimary,
     fontWeight: '700',
-    lineHeight: clampSp(24, 20, 28),
+    lineHeight: clampSp(26, 22, 30),
+    marginTop: -1,
   },
   headerTitle: {
     fontSize: clampSp(18, 16, 22),
     fontWeight: '800',
     color: Colors.textPrimary,
+    letterSpacing: 0.2,
   },
   headerSubtitle: {
     fontSize: clampSp(11, 10, 13),
@@ -57,41 +61,54 @@ export const styles = StyleSheet.create({
   },
 
   // ── Category Bar ────────────────────────────────────────────────────────
-  categoryBar: {
+  // View wrapper locks the height — a ScrollView ignores height on Android
+  categoryBarWrapper: {
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.surfaceBorder,
+    height: clampDp(54, 50, 62),
+    justifyContent: 'center',
   },
+  // ScrollView inside the wrapper — no height set here
+  categoryBar: {},
   categoryBarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
+    paddingVertical: clampDp(9, 7, 11),
+    gap: clampDp(6, 5, 8),
   },
   categoryTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: clampDp(14, 12, 18),
+    height: clampDp(34, 30, 40),
     borderRadius: Radius.full,
     backgroundColor: Colors.surfaceElevated,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   categoryTabActive: {
     backgroundColor: Colors.primaryGlow,
     borderColor: Colors.primary,
   },
   categoryTabText: {
-    fontSize: clampSp(13, 12, 15),
+    fontSize: clampSp(12, 11, 14),
     fontWeight: '600',
     color: Colors.textSecondary,
-  },
+    // single line, truncate if somehow very long
+    numberOfLines: 1,
+  } as any,
   categoryTabTextActive: {
     color: Colors.primary,
+    fontWeight: '700',
   },
 
   // ── Menu List ───────────────────────────────────────────────────────────
   menuList: {
     padding: Spacing.md,
-    paddingBottom: clampDp(90, 80, 110),
+    // bottom padding = cart bar height so last item is never hidden
+    paddingBottom: clampDp(100, 90, 120),
     gap: clampDp(10, 8, 14),
   },
   menuCard: {
@@ -102,15 +119,16 @@ export const styles = StyleSheet.create({
     padding: clampDp(14, 12, 18),
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
-    marginBottom: clampDp(10, 8, 14),
+    // NO marginBottom here — gap on menuList handles spacing
   },
   menuCardDisabled: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
   menuItemName: {
     fontSize: clampSp(15, 13, 17),
     fontWeight: '700',
     color: Colors.textPrimary,
+    flex: 1,
   },
   menuItemPrice: {
     fontSize: clampSp(13, 12, 15),
@@ -125,30 +143,33 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   addBtn: {
-    width: clampDp(34, 30, 40),
-    height: clampDp(34, 30, 40),
+    width: clampDp(36, 32, 42),
+    height: clampDp(36, 32, 42),
     borderRadius: Radius.md,
     backgroundColor: Colors.primaryGlow,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: clampDp(10, 8, 14),
   },
   addBtnText: {
-    fontSize: clampSp(20, 18, 24),
+    fontSize: clampSp(22, 20, 26),
     color: Colors.primary,
     fontWeight: '800',
-    lineHeight: clampSp(20, 18, 24),
+    lineHeight: clampSp(24, 22, 28),
   },
 
   // ── Bottom Cart Bar ─────────────────────────────────────────────────────
+  // NOTE: paddingBottom is set inline in takeout.tsx as insets.bottom + base
   cartBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: Colors.primary,
-    paddingVertical: clampDp(14, 12, 18),
+    paddingTop: clampDp(14, 12, 18),
     paddingHorizontal: Spacing.lg,
+    // paddingBottom is applied inline to absorb nav bar inset
   },
   cartBarDisabled: {
     backgroundColor: Colors.surfaceElevated,
@@ -157,6 +178,10 @@ export const styles = StyleSheet.create({
     fontSize: clampSp(14, 12, 16),
     fontWeight: '700',
     color: Colors.white,
+  },
+  // separate style for text when bar is disabled so it's readable
+  cartBarTextDisabled: {
+    color: Colors.textMuted,
   },
   cartBarArrow: {
     fontSize: clampSp(13, 12, 15),
@@ -167,7 +192,7 @@ export const styles = StyleSheet.create({
   // ── Modal Shared ────────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'flex-end',
   },
   modalHeader: {
@@ -182,17 +207,31 @@ export const styles = StyleSheet.create({
     fontSize: clampSp(17, 15, 20),
     fontWeight: '800',
     color: Colors.textPrimary,
+    letterSpacing: 0.2,
   },
   modalClose: {
     fontSize: clampSp(18, 16, 22),
     color: Colors.textSecondary,
+    padding: clampDp(4, 3, 6),
   },
 
   // ── Cart Modal ──────────────────────────────────────────────────────────
   cartModal: {
     backgroundColor: Colors.background,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
+    borderTopLeftRadius: clampDp(24, 20, 32),
+    borderTopRightRadius: clampDp(24, 20, 32),
+    borderTopWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    // drag handle
+    paddingTop: clampDp(8, 6, 12),
+  },
+  cartModalHandle: {
+    width: clampDp(36, 28, 48),
+    height: clampDp(4, 3, 5),
+    backgroundColor: Colors.surfaceBorder,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginBottom: clampDp(4, 2, 6),
   },
 
   // ── Cart Entries ────────────────────────────────────────────────────────
@@ -238,7 +277,7 @@ export const styles = StyleSheet.create({
   qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: clampDp(8, 6, 12),
+    gap: clampDp(6, 5, 10),
     backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.md,
     padding: clampDp(4, 3, 6),
@@ -272,6 +311,7 @@ export const styles = StyleSheet.create({
     paddingVertical: clampDp(8, 6, 12),
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    alignItems: 'center',
   },
   noteBtnText: {
     fontSize: clampSp(11, 10, 13),
@@ -279,10 +319,14 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
   },
   removeBtn: {
-    padding: clampDp(4, 3, 6),
+    padding: clampDp(6, 4, 8),
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   removeBtnText: {
-    fontSize: clampSp(18, 16, 22),
+    fontSize: clampSp(16, 14, 20),
   },
 
   // ── Billing Sections ────────────────────────────────────────────────────
@@ -293,10 +337,11 @@ export const styles = StyleSheet.create({
     gap: clampDp(8, 6, 12),
   },
   billSectionTitle: {
-    fontSize: clampSp(13, 12, 15),
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    letterSpacing: 0.5,
+    fontSize: clampSp(11, 10, 13),
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   fieldLabel: {
     fontSize: clampSp(11, 10, 13),
@@ -388,7 +433,7 @@ export const styles = StyleSheet.create({
   // ── Summary ─────────────────────────────────────────────────────────────
   summaryBox: {
     padding: clampDp(16, 14, 22),
-    gap: clampDp(8, 6, 12),
+    gap: clampDp(10, 8, 14),
   },
   summaryRow: {
     flexDirection: 'row',
@@ -435,7 +480,7 @@ export const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   submitBtnDisabled: {
-    opacity: 0.6,
+    opacity: 0.55,
   },
   submitBtnText: {
     fontSize: clampSp(16, 14, 19),
@@ -447,8 +492,11 @@ export const styles = StyleSheet.create({
   // ── Picker Modal ────────────────────────────────────────────────────────
   pickerModal: {
     backgroundColor: Colors.background,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
+    borderTopLeftRadius: clampDp(24, 20, 32),
+    borderTopRightRadius: clampDp(24, 20, 32),
+    borderTopWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    paddingTop: clampDp(8, 6, 12),
   },
   pickerSection: {
     padding: clampDp(16, 14, 22),
@@ -457,11 +505,11 @@ export const styles = StyleSheet.create({
     gap: clampDp(8, 6, 12),
   },
   pickerSectionTitle: {
-    fontSize: clampSp(13, 12, 15),
-    fontWeight: '700',
+    fontSize: clampSp(11, 10, 13),
+    fontWeight: '800',
     color: Colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
   pickerOption: {
     flexDirection: 'row',
@@ -492,9 +540,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: Colors.primary,
-    padding: clampDp(16, 14, 20),
-    margin: clampDp(14, 12, 18),
-    borderRadius: Radius.md,
+    // horizontal padding only — vertical padding + insets.bottom applied inline
+    paddingHorizontal: clampDp(20, 16, 26),
+    paddingTop: clampDp(16, 14, 20),
+    // NO margin — sits flush at the bottom of the sheet
   },
   pickerConfirmText: {
     fontSize: clampSp(15, 13, 17),
@@ -510,7 +559,7 @@ export const styles = StyleSheet.create({
   // ── Note Modal ──────────────────────────────────────────────────────────
   noteOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'center',
     padding: clampDp(20, 16, 32),
   },
@@ -553,6 +602,8 @@ export const styles = StyleSheet.create({
     padding: clampDp(14, 12, 18),
     borderRadius: Radius.md,
     backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
   },
   noteCancelText: {
