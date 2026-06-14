@@ -23,16 +23,16 @@ type Props = {
   title: string;
   message?: string;
   buttons?: AlertButton[];
-  emoji?: string;         // override emoji per call
+  emoji?: string;
   type?: 'info' | 'success' | 'error' | 'warning';
   onDismiss?: () => void;
 };
 
 const TYPE_CONFIG = {
-  info:    { emoji: 'ℹ️',  accent: Colors.textSecondary,  glow: 'rgba(136,136,136,0.12)' },
-  success: { emoji: '✅',  accent: Colors.primary,         glow: Colors.primaryGlow       },
-  error:   { emoji: '❌',  accent: Colors.error,           glow: 'rgba(224,85,85,0.12)'   },
-  warning: { emoji: '⚠️', accent: Colors.warning,         glow: 'rgba(217,167,74,0.12)'  },
+  info:    { emoji: 'ℹ️',  accent: Colors.textSecondary, glow: 'rgba(136,136,136,0.10)' },
+  success: { emoji: '✅',  accent: Colors.primary,        glow: Colors.primaryGlow       },
+  error:   { emoji: '❌',  accent: Colors.error,          glow: 'rgba(224,85,85,0.10)'   },
+  warning: { emoji: '⚠️', accent: Colors.warning,        glow: 'rgba(217,167,74,0.10)'  },
 };
 
 export default function CustomAlert({
@@ -44,43 +44,45 @@ export default function CustomAlert({
   type = 'info',
   onDismiss,
 }: Props) {
-  const scale = useRef(new Animated.Value(0.85)).current;
+  const scale = useRef(new Animated.Value(0.88)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
+      scale.setValue(0.88);
+      opacity.setValue(0);
       Animated.parallel([
         Animated.spring(scale, {
           toValue: 1,
           useNativeDriver: true,
-          damping: 18,
-          stiffness: 280,
+          damping: 20,
+          stiffness: 300,
         }),
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 180,
+          duration: 160,
           useNativeDriver: true,
         }),
       ]).start();
     } else {
       Animated.parallel([
         Animated.timing(scale, {
-          toValue: 0.88,
-          duration: 140,
+          toValue: 0.92,
+          duration: 120,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
           toValue: 0,
-          duration: 140,
+          duration: 120,
           useNativeDriver: true,
         }),
       ]).start();
-      scale.setValue(0.85);
     }
   }, [visible]);
 
   const cfg = TYPE_CONFIG[type];
   const displayEmoji = emoji ?? cfg.emoji;
+  const isSingle = buttons.length === 1;
 
   return (
     <Modal
@@ -91,50 +93,50 @@ export default function CustomAlert({
       onRequestClose={onDismiss}
     >
       <Animated.View style={[styles.overlay, { opacity }]}>
-        <Animated.View style={[styles.card, { transform: [{ scale }], borderColor: cfg.accent + '40' }]}>
-
-          {/* Glow blob behind emoji */}
-          <View style={[styles.emojiGlow, { backgroundColor: cfg.glow }]}>
+        <Animated.View
+          style={[
+            styles.card,
+            { transform: [{ scale }], borderColor: cfg.accent + '30' },
+          ]}
+        >
+          {/* Emoji blob */}
+          <View style={[styles.emojiWrap, { backgroundColor: cfg.glow }]}>
             <Text style={styles.emoji}>{displayEmoji}</Text>
           </View>
 
-          <Text style={[styles.title, { color: cfg.accent === Colors.primary ? Colors.textPrimary : cfg.accent === Colors.textSecondary ? Colors.textPrimary : cfg.accent }]}>
-            {title}
-          </Text>
-
-          {message ? (
-            <Text style={styles.message}>{message}</Text>
-          ) : null}
-
-          {/* Divider */}
-          <View style={styles.divider} />
+          {/* Text */}
+          <Text style={styles.title}>{title}</Text>
+          {message ? <Text style={styles.message}>{message}</Text> : null}
 
           {/* Buttons */}
-          <View style={[styles.btnRow, buttons.length === 1 && styles.btnRowSingle]}>
+          <View style={styles.divider} />
+          <View style={[styles.btnRow, isSingle && styles.btnRowSingle]}>
             {buttons.map((btn, i) => {
               const isDestructive = btn.style === 'destructive';
               const isCancel = btn.style === 'cancel';
               const isPrimary = !isDestructive && !isCancel;
+              const isNotLast = i < buttons.length - 1;
+
               return (
                 <TouchableOpacity
                   key={i}
                   style={[
                     styles.btn,
-                    buttons.length === 1 && styles.btnFull,
-                    isPrimary && { backgroundColor: cfg.accent },
-                    isCancel && styles.btnCancel,
-                    isDestructive && styles.btnDestructive,
+                    isSingle && styles.btnSingle,
+                    isPrimary && isSingle && { backgroundColor: cfg.accent },
+                    isNotLast && styles.btnBorderRight,
                   ]}
                   onPress={() => {
                     btn.onPress?.();
                     onDismiss?.();
                   }}
-                  activeOpacity={0.8}
+                  activeOpacity={0.75}
                 >
                   <Text
                     style={[
                       styles.btnText,
-                      isPrimary && styles.btnTextPrimary,
+                      isPrimary && isSingle && styles.btnTextPrimary,
+                      isPrimary && !isSingle && { color: cfg.accent },
                       isCancel && styles.btnTextCancel,
                       isDestructive && styles.btnTextDestructive,
                     ]}
@@ -151,56 +153,59 @@ export default function CustomAlert({
   );
 }
 
+const CARD_WIDTH = Math.min(SCREEN_WIDTH - Spacing.lg * 2, 320);
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: 'rgba(0,0,0,0.78)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: Spacing.lg,
   },
   card: {
-    width: Math.min(SCREEN_WIDTH - Spacing.lg * 2, 340),
-    backgroundColor: Colors.surface,
+    width: CARD_WIDTH,
+    backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.xl,
-    borderWidth: 1.5,
+    borderWidth: 1,
+    alignItems: 'center',
+    overflow: 'hidden',
     paddingTop: Spacing.lg,
     paddingHorizontal: Spacing.lg,
     paddingBottom: 0,
-    alignItems: 'center',
-    overflow: 'hidden',
   },
-  emojiGlow: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+  emojiWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.sm,
   },
   emoji: {
-    fontSize: 34,
+    fontSize: 32,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.textPrimary,
     textAlign: 'center',
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
     marginBottom: 6,
   },
   message: {
     fontSize: 13,
     color: Colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 4,
-    marginBottom: Spacing.sm,
+    lineHeight: 19,
+    paddingHorizontal: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   divider: {
-    width: '100%',
-    height: 1,
+    width: CARD_WIDTH,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: Colors.surfaceBorder,
-    marginTop: Spacing.sm,
+    marginTop: Spacing.md,
   },
   btnRow: {
     flexDirection: 'row',
@@ -211,25 +216,24 @@ const styles = StyleSheet.create({
   },
   btn: {
     flex: 1,
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 0,
   },
-  btnFull: {
-    flex: 1,
+  btnSingle: {
+    marginHorizontal: Spacing.md,
+    marginVertical: Spacing.sm,
+    borderRadius: Radius.md,
+    paddingVertical: 13,
   },
-  btnCancel: {
-    backgroundColor: 'transparent',
-    borderRightWidth: 1,
+  btnBorderRight: {
+    borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: Colors.surfaceBorder,
-  },
-  btnDestructive: {
-    backgroundColor: 'transparent',
   },
   btnText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
   btnTextPrimary: {
     color: Colors.white,

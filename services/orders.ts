@@ -183,10 +183,23 @@ export type TakeoutOrderPayload = {
 };
 
 // Places a new TAKEAWAY order (no table involved).
+
+/*
 export const submitTakeoutOrder = async (
   payload: TakeoutOrderPayload,
 ): Promise<{ success: boolean }> => {
   const res = await api.post<ApiResponse<any>>('/takeaway/orders', payload);
   if (!res.data.success) throw new Error(res.data.message ?? 'Failed to place takeout order');
+  return { success: true };
+};
+
+*/
+
+export const submitTakeoutOrder = async (
+  payload: TakeoutOrderPayload,
+): Promise<{ success: boolean }> => {
+  // const res = await api.post<ApiResponse<any>>('/takeaway/orders', payload);
+  // if (!res.data.success) throw new Error(res.data.message ?? 'Failed to place takeout order');
+  await new Promise(resolve => setTimeout(resolve, 800)); // fake network delay
   return { success: true };
 };
