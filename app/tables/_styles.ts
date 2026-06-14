@@ -104,6 +104,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
+    paddingBottom: Spacing.md,
     gap: Spacing.sm,
   },
   statChip: {
@@ -135,7 +136,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.xs,
+    paddingBottom: Spacing.md,
     gap: Spacing.sm,
   },
   filterBtn: {
@@ -165,7 +166,8 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.sm,
+    paddingTop: Spacing.sm, 
+    paddingBottom: Spacing.md,
     gap: Spacing.sm,
   },
   sectionBtn: {

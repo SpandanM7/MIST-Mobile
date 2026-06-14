@@ -38,7 +38,7 @@ export default function TablesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<ActiveFilter>({ type: 'all' });
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>({ type: 'floor', floorId: '' });
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // ─── Load ─────────────────────────────────────────────────────────────────
@@ -47,7 +47,16 @@ export default function TablesScreen() {
     try {
       setError(null);
       const data = await fetchFloors();
-      setFloors(data);
+setFloors(data);
+if (data.length > 0) {
+  const firstFloor = data[0];
+  const firstSection = firstFloor.sections?.[0];
+  if (firstSection) {
+    setActiveFilter({ type: 'section', floorId: firstFloor.id, sectionId: firstSection.id });
+  } else {
+    setActiveFilter({ type: 'floor', floorId: firstFloor.id });
+  }
+}
     } catch (e) {
       setError('Failed to load floor plan. Pull down to retry.');
     } finally {
@@ -91,12 +100,15 @@ export default function TablesScreen() {
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleFloorPress = (floorId: string) => {
-    if (activeFilter.type === 'floor' && activeFilter.floorId === floorId) {
-      setActiveFilter({ type: 'all' });
-    } else {
-      setActiveFilter({ type: 'floor', floorId });
-    }
-  };
+  const floor = floors.find(f => f.id === floorId);
+  const firstSection = floor?.sections?.[0];
+  if (firstSection) {
+    setActiveFilter({ type: 'section', floorId, sectionId: firstSection.id });
+  } else {
+    setActiveFilter({ type: 'floor', floorId });
+  }
+};
+
 
   const handleSectionPress = (floorId: string, sectionId: string) => {
     if (activeFilter.type === 'section' && activeFilter.sectionId === sectionId) {
@@ -165,15 +177,7 @@ export default function TablesScreen() {
         alwaysBounceHorizontal={false}
         contentContainerStyle={styles.filterRow}
       >
-        <TouchableOpacity
-          style={[styles.filterBtn, activeFilter.type === 'all' && styles.filterBtnActive]}
-          onPress={() => setActiveFilter({ type: 'all' })}
-          activeOpacity={0.75}
-        >
-          <Text style={[styles.filterBtnText, activeFilter.type === 'all' && styles.filterBtnTextActive]}>
-            All
-          </Text>
-        </TouchableOpacity>
+        
 
         {floors.map(floor => {
           const isActive = activeFilter.type !== 'all' && activeFilter.floorId === floor.id;
@@ -201,15 +205,7 @@ export default function TablesScreen() {
             alwaysBounceHorizontal={false}
             contentContainerStyle={styles.sectionRow}
           >
-            <TouchableOpacity
-              style={[styles.sectionBtn, activeFilter.type === 'floor' && styles.sectionBtnActive]}
-              onPress={() => setActiveFilter({ type: 'floor', floorId: currentFloorId })}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.sectionBtnText, activeFilter.type === 'floor' && styles.sectionBtnTextActive]}>
-                All sections
-              </Text>
-            </TouchableOpacity>
+            
 
             {activeSections.map(section => {
               const isActive =

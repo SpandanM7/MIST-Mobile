@@ -13,6 +13,8 @@ import { router } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { loginWaiter } from '@/services/auth';
 import CustomAlert, { AlertButton } from '@/components/Customalert';
+import { Image } from 'react-native';
+
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -65,11 +67,13 @@ export default function LoginScreen() {
       <View style={styles.inner}>
         {/* Logo / Brand */}
         <View style={styles.logoArea}>
-          <View style={styles.logoIcon}>
-            <Text style={styles.logoEmoji}>🍽️</Text>
-          </View>
+                  <Image
+          source={require('../assets/images/logo.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
           <Text style={styles.brandName}>MIST</Text>
-          <Text style={styles.brandTagline}>Waiter Management System</Text>
+          
         </View>
 
         {/* Card */}
@@ -164,20 +168,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.xl,
   },
-  logoIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.primaryGlow,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
-  },
-  logoEmoji: {
-    fontSize: 36,
-  },
+  logoImage: {
+  width: 72,
+  height: 72,
+  marginBottom: Spacing.sm,
+},
   brandName: {
     fontSize: 28,
     fontWeight: '800',
