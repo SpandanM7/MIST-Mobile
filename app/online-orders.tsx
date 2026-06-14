@@ -1,13 +1,5 @@
-import PlaceholderScreen from '@/components/PlaceholderScreen';
+import OnlineOrdersScreen from '@/components/online-orders/OnlineOrdersScreen';
 
-export default function OnlineOrdersScreen() {
-  return (
-    <PlaceholderScreen
-      icon="🌐"
-      title="Online Orders"
-      subtitle="Incoming orders from online platforms"
-      drawerKey="online-orders"
-      comingSoonLabel="Online Orders Coming Soon"
-    />
-  );
+export default function OnlineOrdersRoute() {
+  return <OnlineOrdersScreen />;
 }
